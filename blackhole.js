@@ -1378,10 +1378,21 @@
 
     // Центр — не центр всего окна, а центр видимой области ПРАВЕЕ боковой
     // панели: иначе ЧД визуально смещена под панель и выглядит не по центру
-    // того, что реально видно.
-    const hudRight = document.querySelector('.hud').getBoundingClientRect().right;
-    const availableLeft = Math.min(hudRight, width);
-    centerX = availableLeft + Math.max(0, width - availableLeft) / 2;
+    // того, что реально видно. НО только на широких экранах, где панель и
+    // "свободная" область реально расположены бок о бок. На узких/мобильных
+    // (тот же порог, что и CSS-медиазапрос, растягивающий панель на всю
+    // ширину) панель — плавающий оверлей ПОВЕРХ вьюпоинта, а не часть
+    // раскладки: она почти всегда будет закрыта, и учитывать её ширину в
+    // центрировании при открытой панели только сдвигало бы ЧД к самому краю
+    // экрана (иногда почти за его пределы).
+    const MOBILE_LAYOUT_BREAKPOINT = 560;
+    if (width <= MOBILE_LAYOUT_BREAKPOINT) {
+      centerX = width / 2;
+    } else {
+      const hudRight = document.querySelector('.hud').getBoundingClientRect().right;
+      const availableLeft = Math.min(hudRight, width);
+      centerX = availableLeft + Math.max(0, width - availableLeft) / 2;
+    }
     centerY = height / 2;
 
     // Радиус поля точек — до самого дальнего угла экрана от этого (уже не
@@ -1912,6 +1923,27 @@
   let dragStartX = 0, dragStartY = 0, dragPanStartX = 0, dragPanStartY = 0;
   const CLICK_MOVE_THRESHOLD = 4; // px — отличает "клик на месте" от начала перетаскивания
 
+  // Клик/тап без перетаскивания в режиме сигнала — общая логика для мыши
+  // (mouseup) и тача (touchend). Координаты клика (в системе клиента)
+  // переводятся в то же рендер-пространство, где заданы позиции точек
+  // (p.rx/p.ry) — точно обратное преобразование тому, что делает
+  // draw()/updateTooltip(). Клик внутри горизонта не запускает сигнал
+  // (оттуда "испускать" нечего) — вместо этого останавливает уже идущую
+  // отправку. Отправить сигнал можно откуда угодно ещё, в том числе из-за
+  // пределов текущего поля точек (виден он всё равно только на самих
+  // точках).
+  function handleFieldTap(clientX, clientY) {
+    if (!els.signalMode.checked) return;
+    const wx = centerX + (clientX - panX - centerX) / zoom;
+    const wy = centerY + (clientY - panY - centerY) / zoom;
+    const clickR = Math.hypot(wx - centerX, wy - centerY);
+    if (clickR <= rsPx) {
+      stopSignal();
+    } else {
+      fireSignal(wx, wy);
+    }
+  }
+
   canvas.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
     dragging = true;
@@ -1935,28 +1967,104 @@
   window.addEventListener('mouseup', (e) => {
     if (dragging) {
       scheduleSave(); // положение viewport сохраняем по завершении перетаскивания
-      // Клик без перетаскивания в режиме сигнала — запустить волну из этой
-      // точки. Координаты клика (в системе клиента) переводятся в то же
-      // рендер-пространство, где заданы позиции точек (p.rx/p.ry) — точно
-      // обратное преобразование тому, что делает draw()/updateTooltip().
-      // Клик внутри горизонта не запускает сигнал (оттуда "испускать" нечего)
-      // — вместо этого останавливает уже идущую отправку. Отправить сигнал
-      // можно откуда угодно ещё, в том числе из-за пределов текущего поля
-      // точек (виден он всё равно только на самих точках).
-      if (!dragMoved && els.signalMode.checked) {
-        const wx = centerX + (e.clientX - panX - centerX) / zoom;
-        const wy = centerY + (e.clientY - panY - centerY) / zoom;
-        const clickR = Math.hypot(wx - centerX, wy - centerY);
-        if (clickR <= rsPx) {
-          stopSignal();
-        } else {
-          fireSignal(wx, wy);
-        }
-      }
+      if (!dragMoved) handleFieldTap(e.clientX, e.clientY);
     }
     dragging = false;
     canvas.classList.remove('dragging');
   });
+
+  // --- Touch: панорамирование одним пальцем, зум щипком (pinch-to-zoom),
+  // тап — как клик (сигнал), двойной тап — как двойной клик
+  // (центрирование). Мобильные жесты, зеркалящие мышиные выше. touchstart
+  // висит на canvas (жест должен НАЧАТЬСЯ на поле, а не, скажем, на панели
+  // настроек — тогда естественный скролл панели не трогаем), а
+  // touchmove/touchend — на window, как и для мыши, чтобы жест не срывался,
+  // если палец уйдёт за пределы canvas.
+  let touchMode = null; // null | 'pan' | 'pinch'
+  let touchMoved = false;
+  let touchStartX = 0, touchStartY = 0, touchPanStartX = 0, touchPanStartY = 0;
+  let pinchStartDist = 0, pinchStartZoom = 1;
+  let lastTapTime = 0, lastTapX = 0, lastTapY = 0;
+  const DOUBLE_TAP_MS = 350;
+  const DOUBLE_TAP_DIST = 40;
+
+  function touchDist(t0, t1) {
+    return Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+  }
+
+  function beginTouchPan(clientX, clientY) {
+    touchMode = 'pan';
+    touchMoved = false;
+    touchStartX = clientX;
+    touchStartY = clientY;
+    touchPanStartX = panX;
+    touchPanStartY = panY;
+  }
+
+  canvas.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) {
+      beginTouchPan(e.touches[0].clientX, e.touches[0].clientY);
+    } else if (e.touches.length === 2) {
+      touchMode = 'pinch';
+      pinchStartDist = touchDist(e.touches[0], e.touches[1]);
+      pinchStartZoom = zoom;
+    }
+  }, { passive: true });
+
+  window.addEventListener('touchmove', (e) => {
+    if (touchMode === 'pan' && e.touches.length === 1) {
+      e.preventDefault();
+      const t = e.touches[0];
+      if (!touchMoved && Math.hypot(t.clientX - touchStartX, t.clientY - touchStartY) > CLICK_MOVE_THRESHOLD) {
+        touchMoved = true;
+      }
+      panX = touchPanStartX + (t.clientX - touchStartX);
+      panY = touchPanStartY + (t.clientY - touchStartY);
+    } else if (touchMode === 'pinch' && e.touches.length === 2) {
+      e.preventDefault();
+      if (pinchStartDist > 0) {
+        const dist = touchDist(e.touches[0], e.touches[1]);
+        setZoom(pinchStartZoom * (dist / pinchStartDist));
+      }
+    }
+  }, { passive: false });
+
+  window.addEventListener('touchend', (e) => {
+    if (touchMode === 'pan') {
+      scheduleSave();
+      if (!touchMoved) {
+        const t = e.changedTouches[0];
+        const now = performance.now();
+        const isDoubleTap = (now - lastTapTime) < DOUBLE_TAP_MS
+          && Math.hypot(t.clientX - lastTapX, t.clientY - lastTapY) < DOUBLE_TAP_DIST;
+        if (isDoubleTap) {
+          panX = 0;
+          panY = 0;
+          scheduleSave();
+          lastTapTime = 0; // не даём следующему (тройному) тапу снова сработать как двойной
+        } else {
+          handleFieldTap(t.clientX, t.clientY);
+          lastTapTime = now;
+          lastTapX = t.clientX;
+          lastTapY = t.clientY;
+        }
+      }
+    } else if (touchMode === 'pinch') {
+      scheduleSave(); // масштаб мог измениться щипком
+    }
+    // Если из щипка (2 пальца) остался один — продолжаем панорамирование с
+    // этой точки, а не бросаем жест на середине.
+    if (e.touches.length === 1) {
+      beginTouchPan(e.touches[0].clientX, e.touches[0].clientY);
+      touchMoved = true; // уже было движение (щипок) — не считать это тапом
+    } else {
+      touchMode = null;
+    }
+  }, { passive: false });
+
+  window.addEventListener('touchcancel', () => {
+    touchMode = null;
+  }, { passive: true });
 
   function formatDilation(D, trueR) {
     const ratio = (trueR / rsPx).toFixed(2);
@@ -2066,5 +2174,4 @@
   applySettings();
 
   requestAnimationFrame(frame);
-  window.__debugDraw = () => draw();
 })();
