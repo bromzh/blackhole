@@ -339,8 +339,11 @@
   const DEFAULT_BASE_KEY = 'violet';
   const DEFAULT_HORIZON_MODE = 'auto';
   const DEFAULT_HORIZON_KEY = 'indigo';
+  const DEFAULT_INTRO_EXPANDED = false;
+  const DEFAULT_PAN_X = -67;
+  const DEFAULT_PAN_Y = 24;
 
-  let introExpanded = true;
+  let introExpanded = DEFAULT_INTRO_EXPANDED;
   let infoPanelExpanded = true; // не персистится — только на время сессии
 
   let baseColorKey = DEFAULT_BASE_KEY;
@@ -714,9 +717,9 @@
       if (el.type === 'checkbox') el.checked = defaultSettings[key];
       else el.value = defaultSettings[key];
     }
-    panX = 0;
-    panY = 0;
-    introExpanded = true;
+    panX = DEFAULT_PAN_X;
+    panY = DEFAULT_PAN_Y;
+    introExpanded = DEFAULT_INTRO_EXPANDED;
     resetColorsToDefault();
     applySettings();
     // els.langSelect.value могло измениться выше (сброс к дефолту 'auto') без
@@ -734,7 +737,7 @@
   let massSolar = 0;
   let rsMeters = 0;
   let zoom = 1;
-  let panX = 0, panY = 0;
+  let panX = DEFAULT_PAN_X, panY = DEFAULT_PAN_Y;
   let brightnessFloor = 0.18;
   let overallBrightness = 1;
 
