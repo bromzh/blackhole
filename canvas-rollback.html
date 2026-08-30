@@ -7,7 +7,7 @@
     name="viewport"
     content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
   >
-  <title data-i18n="pageTitle">Schwarzschild Black Hole (GPU) — gravitational time dilation</title>
+  <title data-i18n="pageTitle">Schwarzschild Black Hole — gravitational time dilation</title>
   <link
     rel="stylesheet"
     href="style.css"
@@ -32,7 +32,7 @@
         class="hudCloseBtn"
         aria-label="Hide menu"
       >&#10005;</button>
-      <h1 data-i18n="h1">Schwarzschild Black Hole (GPU)</h1>
+      <h1 data-i18n="h1">Schwarzschild Black Hole</h1>
     </div>
 
     <div class="row langRow">
@@ -130,9 +130,9 @@
         id="density"
         type="range"
         min="1000"
-        max="1000000"
+        max="50000"
         value="25000"
-        step="1000"
+        step="500"
       >
       <div
         class="readout"
@@ -724,8 +724,8 @@
     >Settings are saved automatically.</p>
     <p class="hint autosave-hint"><a
         href="index.html"
-        data-i18n="cpuVersionLink"
-      >← CPU version</a></p>
+        data-i18n="gpuVersionLink"
+      >GPU version →</a></p>
   </div>
 
   <div
@@ -756,7 +756,7 @@
     class="cursor-tooltip"
   ></div>
 
-  <script src="gpu-sim.js"></script>
+  <script src="canvas-rollback.js"></script>
 </body>
 
 </html>

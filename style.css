@@ -382,3 +382,34 @@ body.hudCollapsed .hudEdgeBtn {
   white-space: nowrap;
   box-shadow: 0 6px 20px rgba(0,0,0,0.5);
 }
+
+/* Полноэкранная заглушка на случай, если WebGL2 недоступен/не собрался
+   шейдер (index.html — GPU-версия) — показывается поверх всего вместо
+   канваса, а не только ссылкой в меню (см. showWebglFallback() в
+   index.js), display переключается инлайново оттуда же. */
+.webglFallback {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+  background: rgba(5, 2, 8, 0.94);
+}
+
+.webglFallback p {
+  margin: 0;
+  max-width: 420px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #e8e0f5;
+}
+
+.webglFallback a {
+  color: #cbb9ef;
+  font-size: 16px;
+  font-weight: 600;
+}

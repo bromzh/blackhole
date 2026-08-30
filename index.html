@@ -7,7 +7,7 @@
     name="viewport"
     content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
   >
-  <title data-i18n="pageTitle">Schwarzschild Black Hole — gravitational time dilation</title>
+  <title data-i18n="pageTitle">Schwarzschild Black Hole (GPU) — gravitational time dilation</title>
   <link
     rel="stylesheet"
     href="style.css"
@@ -16,6 +16,18 @@
 
 <body>
   <canvas id="scene"></canvas>
+
+  <div
+    id="webglFallback"
+    class="webglFallback"
+    style="display:none;"
+  >
+    <p data-i18n="webglFallback_text">This page needs WebGL2, which your browser doesn't support (or has disabled).</p>
+    <p><a
+        href="canvas-rollback.html"
+        data-i18n="webglFallback_link"
+      >Open the Canvas (CPU) version →</a></p>
+  </div>
 
   <button
     type="button"
@@ -32,7 +44,7 @@
         class="hudCloseBtn"
         aria-label="Hide menu"
       >&#10005;</button>
-      <h1 data-i18n="h1">Schwarzschild Black Hole</h1>
+      <h1 data-i18n="h1">Schwarzschild Black Hole (GPU)</h1>
     </div>
 
     <div class="row langRow">
@@ -130,9 +142,9 @@
         id="density"
         type="range"
         min="1000"
-        max="50000"
+        max="1000000"
         value="25000"
-        step="500"
+        step="1000"
       >
       <div
         class="readout"
@@ -723,9 +735,9 @@
       data-i18n="autosaveHint"
     >Settings are saved automatically.</p>
     <p class="hint autosave-hint"><a
-        href="gpu-sim.html"
-        data-i18n="gpuVersionLink"
-      >GPU version →</a></p>
+        href="canvas-rollback.html"
+        data-i18n="cpuVersionLink"
+      >← CPU version</a></p>
   </div>
 
   <div
@@ -756,7 +768,7 @@
     class="cursor-tooltip"
   ></div>
 
-  <script src="blackhole.js"></script>
+  <script src="index.js"></script>
 </body>
 
 </html>

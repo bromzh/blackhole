@@ -43,15 +43,25 @@
   const canvas = document.getElementById('scene');
   // GPU-версия: рендер целиком через WebGL2 (см. блок перед resize() ниже,
   // рядом с drawPoints()) — физика/состояние/настройки ниже почти дословно
-  // те же, что и в CPU-версии (blackhole.js), меняется только то, КАК уже
+  // те же, что и в CPU-версии (canvas-rollback.js), меняется только то, КАК уже
   // посчитанные точки попадают на экран.
   const gl = canvas.getContext('webgl2', { alpha: false, antialias: true, depth: false, stencil: false });
   // Видимое место для ошибки инициализации — консоль недоступна в этой
   // сессии, а без этого любой сбой (например, не собрался шейдер) молча
   // роняет весь скрипт: меню остаётся с "—" везде и без объяснений.
   const errorEl = document.getElementById('fpsReadout');
+  // Крупная заметная ссылка на canvas-версию поверх всего экрана — не
+  // только в меню (оно может быть свёрнуто, а до этого места пользователь
+  // вообще не доберётся, если на его GPU/браузере эта страница не
+  // работает вовсе).
+  function showWebglFallback() {
+    const el = document.getElementById('webglFallback');
+    if (el) el.style.display = 'flex';
+  }
+
   if (!gl) {
     if (errorEl) errorEl.textContent = 'WebGL2 is not supported in this browser.';
+    showWebglFallback();
     return;
   }
 
@@ -60,6 +70,7 @@
   } catch (err) {
     console.error(err);
     if (errorEl) errorEl.textContent = 'Error: ' + err.message;
+    showWebglFallback();
   }
 
   function runSimulation() {
@@ -175,6 +186,8 @@
       resetSettings_label: 'Reset settings',
       autosaveHint: 'Settings are saved automatically.',
       cpuVersionLink: '← CPU version',
+      webglFallback_text: 'This page needs WebGL2, which your browser doesn\'t support (or has disabled).',
+      webglFallback_link: 'Open the Canvas (CPU) version →',
       infoPanel_title: 'Info',
       unit_m: 'm',
       unit_km: 'km',
@@ -283,6 +296,8 @@
       resetSettings_label: 'Сбросить настройки',
       autosaveHint: 'Настройки сохраняются автоматически.',
       cpuVersionLink: '← CPU-версия',
+      webglFallback_text: 'Этой странице нужен WebGL2, а браузер его не поддерживает (или он отключён).',
+      webglFallback_link: 'Открыть Canvas (CPU) версию →',
       infoPanel_title: 'Информация',
       unit_m: 'м',
       unit_km: 'км',
@@ -673,7 +688,7 @@
     defaultSettings[key] = el.type === 'checkbox' ? el.checked : el.value;
   }
 
-  // Отдельный ключ от CPU-версии (blackhole.js) — иначе, открытые на одном
+  // Отдельный ключ от CPU-версии (canvas-rollback.js) — иначе, открытые на одном
   // origin, они бы делили один и тот же сохранённый набор настроек в
   // localStorage, что удивляло бы (например, density для сравнения FPS
   // обычно осмысленно держать разным на CPU- и GPU-страницах).
