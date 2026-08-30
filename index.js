@@ -823,6 +823,17 @@
   // Положения точек сигнал не меняет — только влияет на видимую фазу.
   let signalActive = false;
   let signalOriginX = 0, signalOriginY = 0, signalStartTime = 0;
+  // Вычисление p.sigDelay (см. fireSignal()) — не бесплатное (интеграл в
+  // несколько шагов с бисекцией на КАЖДУЮ точку), и при большой плотности
+  // (ползунок до 1 000 000) один синхронный проход по всем точкам ощутимо
+  // подвешивает кадр. Вместо этого fireSignal() лишь запускает job ниже,
+  // а stepSignalCompute() (вызывается из frame()) досчитывает его порциями,
+  // ограниченными по ВРЕМЕНИ (а не по числу точек — так работает одинаково
+  // быстро независимо от мощности конкретного устройства), пока не
+  // обработает все точки — сигнал активируется и буфер на GPU перезаливается
+  // только по завершении.
+  let signalComputeJob = null;
+  const SIGNAL_COMPUTE_BUDGET_MS = 4;
 
   function rgbToHsl(r, g, b) {
     r /= 255; g /= 255; b /= 255;
@@ -1110,6 +1121,7 @@
     // Новый набор точек не имеет посчитанных задержек сигнала — гасим
     // текущий сигнал, а не показываем его в рассинхроне со свежим полем.
     signalActive = false;
+    signalComputeJob = null;
     updateEdgeDe();
     const rs = computeRsPx(0), outer = fieldRadius;
     const Lmax = properDistance(outer, rs);
@@ -1218,22 +1230,47 @@
   // здесь только считаются задержки p.sigDelay, общие для любого числа
   // импульсов с интервалом SIGNAL_PULSE_INTERVAL.
   function fireSignal(originX, originY) {
+    // Сам сигнал активируется только когда job досчитает ВСЕ точки (см.
+    // stepSignalCompute()) — иначе часть точек ещё жила бы со старым/нулевым
+    // sigDelay, пока фронт уже "распространяется".
     signalOriginX = originX;
     signalOriginY = originY;
-    signalStartTime = simTime;
-    signalActive = true;
+    signalActive = false;
+    signalComputeJob = {
+      originX,
+      originY,
+      noGravity: els.noGravity.checked,
+      Lmax: 0,
+      index: 0,
+    };
+    if (!signalComputeJob.noGravity) signalComputeJob.Lmax = properDistance(fieldRadius, rsPx);
+  }
 
-    const noGravity = els.noGravity.checked;
-    const Lmax = noGravity ? 0 : properDistance(fieldRadius, rsPx);
+  function stopSignal() {
+    signalActive = false;
+    signalComputeJob = null;
+  }
+
+  // Считает p.sigDelay порциями, ограниченными по времени (SIGNAL_COMPUTE_BUDGET_MS
+  // на кадр), пока не обработает points целиком — см. комментарий у
+  // signalComputeJob выше. Вызывается из frame() каждый кадр, пока job не null.
+  function stepSignalCompute() {
+    const job = signalComputeJob;
+    if (!job) return;
+    const { originX, originY, noGravity, Lmax } = job;
     const steps = SIGNAL_INTEGRATION_STEPS;
-    for (const p of points) {
-      const stepX = (p.rx - originX) / steps;
-      const stepY = (p.ry - originY) / steps;
-      const segLen = Math.hypot(stepX, stepY);
+    const deadline = performance.now() + SIGNAL_COMPUTE_BUDGET_MS;
+    let idx = job.index;
+    const n = points.length;
+    while (idx < n) {
+      const p = points[idx];
       let delay = 0;
       if (noGravity) {
         delay = Math.hypot(p.rx - originX, p.ry - originY) / SIGNAL_SPEED;
       } else {
+        const stepX = (p.rx - originX) / steps;
+        const stepY = (p.ry - originY) / steps;
+        const segLen = Math.hypot(stepX, stepY);
         for (let i = 0; i < steps; i++) {
           const mx = originX + stepX * (i + 0.5);
           const my = originY + stepY * (i + 0.5);
@@ -1244,9 +1281,8 @@
           } else {
             // Меньше итераций бисекции, чем при размещении точек (invertProperDistance
             // по умолчанию): здесь это лишь вклад в интеграл задержки по многим точкам
-            // сразу (вызывается разом для всего поля при каждом клике), точность
-            // важна куда меньше, а высокая плотность точек делает лишние итерации
-            // заметными по времени отклика на клик.
+            // сразу, точность важна куда меньше, а высокая плотность точек делает
+            // лишние итерации заметными по суммарному времени вычисления.
             const trueR = invertProperDistance(renderedR, rsPx, fieldRadius, Lmax, 10);
             D = Math.max(Math.sqrt(Math.max(0, 1 - rsPx / trueR)), MIN_BLINK_D);
           }
@@ -1254,15 +1290,23 @@
         }
       }
       p.sigDelay = delay;
+      idx++;
+      // performance.now() сам по себе не бесплатен — проверяем бюджет времени
+      // не на каждой точке, а раз в 1024, иначе сама проверка съедала бы
+      // заметную долю выигрыша от чанкинга.
+      if ((idx & 1023) === 0 && performance.now() > deadline) break;
     }
-    // sigDelay поменялся для ВСЕХ точек разом — перезаливаем статический
-    // буфер (см. syncGpuStatic()), а не только "дельту": сигнал — редкое
-    // событие (по клику), не кадровая нагрузка.
-    syncGpuStatic();
-  }
-
-  function stopSignal() {
-    signalActive = false;
+    job.index = idx;
+    if (idx >= n) {
+      // Job мог относиться к УЖЕ неактуальному полю точек (density/mass
+      // сменились посреди вычисления) — generatePoints()/onMassChange()/
+      // onNoGravityChange() в этом случае сами обнуляют signalComputeJob
+      // (см. их код), так что если мы дошли сюда, job точно про ТЕКУЩИЕ points.
+      signalStartTime = simTime;
+      signalActive = true;
+      syncGpuStatic();
+      signalComputeJob = null;
+    }
   }
 
   // Три опорных цвета того же радиального градиента, что раньше строил
@@ -1467,6 +1511,7 @@
     // Задержки сигнала посчитаны для старого rsPx — при смене массы гасим
     // сигнал, а не показываем его с устаревшей физикой.
     signalActive = false;
+    signalComputeJob = null;
     updateStats();
   }
 
@@ -1594,6 +1639,7 @@
     // Задержки уже запущенного сигнала посчитаны для старого режима
     // тяготения — гасим его, а не показываем в рассинхроне с новым.
     signalActive = false;
+    signalComputeJob = null;
     recomputePhysics();
   }
 
@@ -2188,6 +2234,7 @@
     if (!els.pause.checked) {
       simTime += dt * timeScale;
     }
+    stepSignalCompute();
     draw();
 
     fpsFrameCount++;
