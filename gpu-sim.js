@@ -41,7 +41,28 @@
 
 (() => {
   const canvas = document.getElementById('scene');
-  const ctx = canvas.getContext('2d');
+  // GPU-версия: рендер целиком через WebGL2 (см. блок перед resize() ниже,
+  // рядом с drawPoints()) — физика/состояние/настройки ниже почти дословно
+  // те же, что и в CPU-версии (blackhole.js), меняется только то, КАК уже
+  // посчитанные точки попадают на экран.
+  const gl = canvas.getContext('webgl2', { alpha: false, antialias: true, depth: false, stencil: false });
+  // Видимое место для ошибки инициализации — консоль недоступна в этой
+  // сессии, а без этого любой сбой (например, не собрался шейдер) молча
+  // роняет весь скрипт: меню остаётся с "—" везде и без объяснений.
+  const errorEl = document.getElementById('fpsReadout');
+  if (!gl) {
+    if (errorEl) errorEl.textContent = 'WebGL2 is not supported in this browser.';
+    return;
+  }
+
+  try {
+    runSimulation();
+  } catch (err) {
+    console.error(err);
+    if (errorEl) errorEl.textContent = 'Error: ' + err.message;
+  }
+
+  function runSimulation() {
 
   const G = 6.674e-11;
   const C = 299792458;
@@ -77,8 +98,8 @@
 
   const I18N = {
     en: {
-      pageTitle: 'Schwarzschild Black Hole — gravitational time dilation',
-      h1: 'Schwarzschild Black Hole',
+      pageTitle: 'Schwarzschild Black Hole (GPU) — gravitational time dilation',
+      h1: 'Schwarzschild Black Hole (GPU)',
       introToggle: 'About this simulation',
       introText: 'Points are stationary "beacons" around the black hole. Their pulsing slows down and reddens near the event horizon due to gravitational time dilation and gravitational redshift (Schwarzschild metric, exact formulas). Points can optionally stretch toward the horizon — the exact tidal-stretch factor 1/√(1-Rs/r). Mouse wheel — zoom, drag — pan, double-click — recenter (without resetting zoom). In signal mode, clicking the field launches a wave spreading from the click point: watch it lag and distort near the horizon.',
       group_simulation: 'Simulation',
@@ -153,7 +174,7 @@
       copySettings_label: 'Copy settings',
       resetSettings_label: 'Reset settings',
       autosaveHint: 'Settings are saved automatically.',
-      gpuVersionLink: 'GPU version →',
+      cpuVersionLink: '← CPU version',
       infoPanel_title: 'Info',
       unit_m: 'm',
       unit_km: 'km',
@@ -185,8 +206,8 @@
       preset_slate: 'Slate',
     },
     ru: {
-      pageTitle: 'Чёрная дыра Шварцшильда — гравитационное замедление времени',
-      h1: 'Чёрная дыра Шварцшильда',
+      pageTitle: 'Чёрная дыра Шварцшильда (GPU) — гравитационное замедление времени',
+      h1: 'Чёрная дыра Шварцшильда (GPU)',
       introToggle: 'Об этой симуляции',
       introText: 'Точки — неподвижные «маяки» вокруг чёрной дыры. Их пульсация замедляется и краснеет вблизи горизонта событий из-за гравитационного замедления времени и гравитационного красного смещения (метрика Шварцшильда, точные формулы). Опционально точки растягиваются к горизонту — точный множитель приливного растяжения 1/√(1-Rs/r). Колесо мыши — зум, зажатая кнопка мыши — перемещение вида, двойной клик — центрировать (без сброса масштаба). В режиме отправки сигнала клик по полю запускает волну, расходящуюся от точки клика: видно, как она задерживается и искажается вблизи горизонта.',
       group_simulation: 'Симуляция',
@@ -261,7 +282,7 @@
       copySettings_label: 'Скопировать настройки',
       resetSettings_label: 'Сбросить настройки',
       autosaveHint: 'Настройки сохраняются автоматически.',
-      gpuVersionLink: 'GPU-версия →',
+      cpuVersionLink: '← CPU-версия',
       infoPanel_title: 'Информация',
       unit_m: 'м',
       unit_km: 'км',
@@ -362,9 +383,12 @@
   let baseColor = PRESET_BY_KEY[baseColorKey].rgb;
   let horizonColor = PRESET_BY_KEY[horizonColorKey].rgb;
 
+  // MIX_LEVELS (квантование цветового mix точки) остаётся — используется как
+  // "разрешение" аттрибута aMixT для шейдера (см. syncGpuStatic()), просто
+  // без ALPHA_LEVELS/palette[]: та была CPU-кэшем готовых CSS-строк цвета
+  // под конкретную (mixIdx, alpha) пару — на GPU цвет и альфа просто два
+  // независимых числа, смешиваются прямо в шейдере, кэш не нужен.
   const MIX_LEVELS = 48;
-  const ALPHA_LEVELS = 32;
-  let palette = [];
 
   // Приливное (радиальное) растяжение формы точки — точный метрический
   // множитель sqrt(g_rr) = 1/sqrt(1-rs/r) = 1/D(r): именно во столько раз
@@ -649,7 +673,11 @@
     defaultSettings[key] = el.type === 'checkbox' ? el.checked : el.value;
   }
 
-  const STORAGE_KEY = 'blackhole-schwarzschild-settings-v1';
+  // Отдельный ключ от CPU-версии (blackhole.js) — иначе, открытые на одном
+  // origin, они бы делили один и тот же сохранённый набор настроек в
+  // localStorage, что удивляло бы (например, density для сравнения FPS
+  // обычно осмысленно держать разным на CPU- и GPU-страницах).
+  const STORAGE_KEY = 'blackhole-schwarzschild-settings-gpu-v1';
   const SAVE_DEBOUNCE_MS = 1000;
   let saveTimer = null;
 
@@ -763,7 +791,7 @@
   // позволяет в drawPoints() открыть один save()/restore() на весь такой
   // "хвост" массива вместо одного на каждую точку.
   let transformStartIndex = 0;
-  let bgGradient = null;
+  let bgStop0 = { r: 0, g: 0, b: 0 }, bgStop1 = { r: 0, g: 0, b: 0 }, bgStop2 = { r: 0, g: 0, b: 0 };
   let simTime = 0;
   let lastFrameMs = 0;
 
@@ -853,35 +881,13 @@
   function updateColors() {
     baseColor = PRESET_BY_KEY[baseColorKey].rgb;
     horizonColor = horizonMode === 'auto' ? autoHorizonColor(baseColor) : PRESET_BY_KEY[horizonColorKey].rgb;
-    buildPalette();
     if (fieldRadius > 0) updateBgGradient();
   }
 
-  function buildPalette() {
-    palette = [];
-    for (let m = 0; m <= MIX_LEVELS; m++) {
-      const mix = m / MIX_LEVELS;
-      const r = Math.round(baseColor.r + (horizonColor.r - baseColor.r) * mix);
-      const g = Math.round(baseColor.g + (horizonColor.g - baseColor.g) * mix);
-      const b = Math.round(baseColor.b + (horizonColor.b - baseColor.b) * mix);
-      const row = new Array(ALPHA_LEVELS + 1);
-      for (let a = 0; a <= ALPHA_LEVELS; a++) {
-        const alpha = a / ALPHA_LEVELS;
-        row[a] = `rgba(${r},${g},${b},${alpha.toFixed(3)})`;
-      }
-      palette.push(row);
-    }
-  }
-
-  // ctx.arc()+fill() дороже fillRect() в основном из-за фиксированных
-  // накладных расходов на построение/растеризацию пути на каждый вызов, а
-  // не из-за площади заливки — поэтому просадка FPS у круглых точек заметнее
-  // всего именно при МЕЛКОМ размере (накладные расходы становятся большей
-  // долей стоимости кадра). При таком размере круг и квадрат всё равно
-  // визуально неразличимы, поэтому ниже этого порога точки рисуются как
-  // квадрат независимо от выбранной формы — без потери вида, но без
-  // лишней стоимости. Пробовал заменить круг на штамповку спрайта
-  // (drawImage) — в тестах это не ускорило, а местами замедлило отрисовку.
+  // Ниже этого размера круг и квадрат визуально неразличимы — шейдер (см.
+  // uRoundMinSize у drawPointsGpu()) рисует такие точки как квадрат
+  // независимо от выбранной формы, просто чтобы не тратить fragment-discard
+  // впустую там, где разницы всё равно не видно.
   const ROUND_MIN_SIZE = 3;
 
   function solarMassFromSlider(v) {
@@ -1101,6 +1107,7 @@
       points = generateRandomPoints(count, rs, outer, Lmax);
     }
     partitionByTransform();
+    syncGpuStatic();
   }
 
   // Группирует points так, чтобы все точки с заметным растяжением И/ИЛИ
@@ -1141,6 +1148,7 @@
       p.apparent = apparentSizeFactor(De);
     }
     partitionByTransform();
+    syncGpuStatic();
   }
 
   function pointSize() {
@@ -1152,6 +1160,7 @@
   // пересчитать size на месте, как и физику при смене массы.
   function recomputeSizes() {
     for (const p of points) p.size = pointSize();
+    syncGpuStatic();
   }
 
   // Перемешивает начальную фазу пульсации точек на месте, не трогая их
@@ -1190,8 +1199,9 @@
   // отклоняется), но задержка у горизонта передаётся честно и это даёт
   // желаемый эффект "искажения" волны при прохождении рядом с ЧД.
   // Тип сигнала (одиночный/непрерывный/N импульсов) и число импульсов
-  // читаются живьём в drawPoints() — здесь только считаются задержки p.sigDelay,
-  // общие для любого числа импульсов с интервалом SIGNAL_PULSE_INTERVAL.
+  // читаются живьём в шейдере (см. uSignalType/uMaxPulses у drawPointsGpu()) —
+  // здесь только считаются задержки p.sigDelay, общие для любого числа
+  // импульсов с интервалом SIGNAL_PULSE_INTERVAL.
   function fireSignal(originX, originY) {
     signalOriginX = originX;
     signalOriginY = originY;
@@ -1230,17 +1240,24 @@
       }
       p.sigDelay = delay;
     }
+    // sigDelay поменялся для ВСЕХ точек разом — перезаливаем статический
+    // буфер (см. syncGpuStatic()), а не только "дельту": сигнал — редкое
+    // событие (по клику), не кадровая нагрузка.
+    syncGpuStatic();
   }
 
   function stopSignal() {
     signalActive = false;
   }
 
+  // Три опорных цвета того же радиального градиента, что раньше строил
+  // ctx.createRadialGradient — сам градиент (интерполяция между ними по
+  // расстоянию от центра, с той же точкой останова 0.45) теперь считается
+  // в фоновом шейдере (см. BG_FRAG ниже, рядом с drawPoints()), а не на CPU.
   function updateBgGradient() {
-    bgGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, fieldRadius);
-    bgGradient.addColorStop(0, rgbCss(bgShade(baseColor, 0.075)));
-    bgGradient.addColorStop(0.45, rgbCss(bgShade(baseColor, 0.035)));
-    bgGradient.addColorStop(1, rgbCss(bgShade(baseColor, 0.012)));
+    bgStop0 = bgShade(baseColor, 0.075);
+    bgStop1 = bgShade(baseColor, 0.035);
+    bgStop2 = bgShade(baseColor, 0.012);
   }
 
   // ---- Цвета и палитры ------------------------------------------------
@@ -1390,7 +1407,6 @@
     canvas.height = Math.floor(height * dpr);
     canvas.style.width = width + 'px';
     canvas.style.height = height + 'px';
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     // Центр — не центр всего окна, а центр видимой области ПРАВЕЕ боковой
     // панели: иначе ЧД визуально смещена под панель и выглядит не по центру
@@ -1620,255 +1636,527 @@
     setZoom(parseFloat(els.zoom.value) / 100);
   }
 
-  function drawHorizon() {
-    ctx.fillStyle = '#000000';
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, rsPx, 0, TWO_PI);
-    ctx.fill();
-  }
+  // ================== GPU-рендер ==========================================
+  // Всё, что раньше рисовал ctx (drawHorizon/drawGrid/drawPoints/
+  // drawSignalOrigin/draw), теперь идёт через WebGL2. Три программы:
+  //   - pointProg — само поле точек, инстансированные квады. Физика,
+  //     которая меняется КАЖДЫЙ кадр (волна мерцания, сигнал), считается
+  //     прямо в шейдере по uTime — единственное, что уходит в JS-цикл per
+  //     frame, это сборка/заливка uniform'ов (см. drawPointsGpu()), а не
+  //     обход всех точек. Всё, что меняется РЕЖЕ кадра (позиция, приливные
+  //     коэффициенты, цвет, задержка сигнала), лежит в instance-буфере,
+  //     который перезаливает syncGpuStatic() — она вызывается из
+  //     generatePoints()/recomputePhysics()/recomputeSizes()/fireSignal(),
+  //     то есть именно тогда, когда эти величины реально меняются.
+  //   - flatProg — простая заливка одним цветом с той же uK/uE-трансформацией
+  //     камеры, что и у точек; используется для горизонта, сетки и маркера
+  //     сигнала (см. drawFlat()) — их геометрия дешёвая (десятки-сотни
+  //     вершин), поэтому её, как и в CPU-версии, просто пересчитывают на
+  //     CPU каждый раз, когда нужно нарисовать, без отдельного кеширования.
+  //   - bgProg — полноэкранный радиальный градиент фона (три опорных цвета
+  //     из updateBgGradient()), НЕ зависит от камеры — как и в CPU-версии,
+  //     фон заливается ДО применения пан/зума.
 
-  function drawGrid() {
-    const Lmax = properDistance(fieldRadius, rsPx);
-    ctx.save();
-    ctx.strokeStyle = 'rgba(94,234,212,0.4)';
-    ctx.lineWidth = 1 / zoom;
+  const POINT_VERT = `#version 300 es
+    layout(location=0) in vec2 aCorner;
+    layout(location=1) in vec2 aPos;
+    layout(location=2) in float aCosAng;
+    layout(location=3) in float aSinAng;
+    layout(location=4) in float aSize;
+    layout(location=5) in float aStretch;
+    layout(location=6) in float aCompress;
+    layout(location=7) in float aApparent;
+    layout(location=8) in float aMixT;
+    layout(location=9) in float aNeedsTransform;
+    layout(location=10) in float aAngFreq;
+    layout(location=11) in float aRandPhase;
+    layout(location=12) in float aBrightBase;
+    layout(location=13) in float aJitter;
+    layout(location=14) in float aSigDelay;
 
-    const rings = 11;
-    for (let i = 1; i <= rings; i++) {
-      const r = rsPx + (fieldRadius - rsPx) * (i / rings);
-      const dr = distortedRadius(r, rsPx, fieldRadius, Lmax);
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, dr, 0, TWO_PI);
-      ctx.stroke();
+    uniform float uK;
+    uniform vec2 uE;
+    uniform vec2 uCanvasPx;
+    uniform float uTime;
+    uniform float uSync;
+    uniform float uOverallBrightness;
+    uniform float uBlinkCurve; // 0=sine 1=linear 2=easeIn 3=easeOut 4=easeInOut
+    uniform float uSignalOn;
+    uniform float uSignalStartTime;
+    uniform float uMaxPulses;
+    uniform float uStretchOn;
+    uniform float uCompressOn;
+    uniform float uApparentOn;
+    uniform float uStretchToward;
+    uniform float uTransformOn;
+    uniform float uRound;
+    uniform float uRoundMinSize;
+    uniform vec3 uBaseColor;
+    uniform vec3 uHorizonColor;
+
+    out vec2 vCorner;
+    out vec3 vColor;
+    out float vAlpha;
+    out float vRoundOk;
+
+    const float TWO_PI = 6.28318530718;
+
+    // Треугольная волна (0->1->0 за период) — основа для linear/easeIn/
+    // easeOut/easeInOut, см. triangleV()/blinkWave*() в CPU-версии.
+    float triangleV(float phase) {
+      float u = mod(phase / TWO_PI, 1.0);
+      if (u < 0.0) u += 1.0;
+      return u < 0.5 ? u * 2.0 : (1.0 - u) * 2.0;
     }
 
-    const spokes = 20;
-    for (let i = 0; i < spokes; i++) {
-      const ang = (i / spokes) * TWO_PI;
-      ctx.beginPath();
-      ctx.moveTo(centerX + Math.cos(ang) * rsPx, centerY + Math.sin(ang) * rsPx);
-      ctx.lineTo(centerX + Math.cos(ang) * fieldRadius, centerY + Math.sin(ang) * fieldRadius);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  // Форма кривой мерцания точки за один период (см. els.blinkCurve). "sine" —
-  // исходная гладкая синусоида. Остальные три строятся из треугольной волны
-  // v (0→1→0 за период, пик в середине) — "linear" отдаёт её как есть,
-  // "easeIn"/"easeOut" переформовывают подъём/спад степенной функцией v^2 /
-  // 1-(1-v)^2: easeIn дольше задерживается у низких значений и резко
-  // взлетает к пику (компенсирует то, что глаз воспринимает даже среднюю
-  // альфу как "довольно яркую" — без этого точки визуально мигают
-  // непропорционально долго на пике и коротко в тени), easeOut — наоборот.
-  // Раньше это была одна функция с ветвлением по curveType (строковое
-  // сравнение) НА КАЖДУЮ точку НА КАЖДЫЙ кадр — при десятках тысяч точек
-  // это давало заметный оверхед сверх самого вычисления. Теперь тип кривой
-  // читается и разрешается в конкретную функцию ОДИН РАЗ за кадр (см.
-  // drawPoints()), а в цикле по точкам — просто прямой вызов без сравнений.
-  function blinkWaveSine(phase) {
-    return 0.5 + 0.5 * Math.sin(phase);
-  }
-  function triangleV(phase) {
-    let u = (phase / TWO_PI) % 1;
-    if (u < 0) u += 1;
-    return u < 0.5 ? u * 2 : (1 - u) * 2;
-  }
-  function blinkWaveLinear(phase) {
-    return triangleV(phase);
-  }
-  function blinkWaveEaseIn(phase) {
-    const v = triangleV(phase);
-    return v * v;
-  }
-  function blinkWaveEaseOut(phase) {
-    const v = triangleV(phase);
-    return 1 - (1 - v) * (1 - v);
-  }
-  // Классический smoothstep (кубический ease-in-out): нулевая производная на
-  // обоих концах (v=0 и v=1) — точка дольше задерживается и у пика яркости,
-  // и у минимума, а переход между ними, наоборот, быстрее.
-  function blinkWaveEaseInOut(phase) {
-    const v = triangleV(phase);
-    return v * v * (3 - 2 * v);
-  }
-  const BLINK_WAVE_FNS = {
-    sine: blinkWaveSine,
-    linear: blinkWaveLinear,
-    easeIn: blinkWaveEaseIn,
-    easeOut: blinkWaveEaseOut,
-    easeInOut: blinkWaveEaseInOut,
-  };
-
-  function drawPoints() {
-    // В синхронном режиме все точки стартуют в одной фазе (phase0 = 0). Так
-    // как локальная угловая частота p.angFreq зависит только от радиуса r
-    // (сферическая симметрия Шварцшильда), точки на одном и том же радиусе
-    // всегда остаются в фазе друг с другом; расхождение фаз со временем
-    // возникает только между разными радиусами — именно так, как и должно
-    // расходиться собственное время наблюдателей на разной высоте над ЧД.
-    const sync = els.syncMode.checked;
-    const shapeIsRound = els.pointShape.value === 'circle';
-    const stretchOn = els.tidalStretch.checked;
-    const compressOn = els.tidalCompress.checked;
-    const apparentOn = els.apparentSize.checked;
-    const blinkFn = BLINK_WAVE_FNS[els.blinkCurve.value] || blinkWaveSine;
-
-    // Точки с заметным растяжением и/или сжатием сгруппированы в конец points
-    // (см. partitionByTransform) — их можно отрисовать через ЯВНУЮ матрицу
-    // трансформации (setTransform), заранее посчитав общий множитель k/E/F
-    // один раз на кадр, а не один save/rotate/restore на каждую точку. Именно
-    // такие вызовы на точку и роняли FPS: раньше их было по одному на каждую
-    // из тысяч точек в кадре, теперь — максимум одна пара save()/restore() на
-    // ВЕСЬ кадр.
-    const k = dpr * zoom;
-    const E = dpr * (centerX + panX - zoom * centerX);
-    const F = dpr * (centerY + panY - zoom * centerY);
-    const transformFrom = (stretchOn || compressOn || apparentOn) ? transformStartIndex : points.length;
-    let batchOpen = false;
-
-    // Волна сигнала (см. fireSignal) не двигает точки — она лишь на короткое
-    // время, пока проходит через точку (SIGNAL_FLASH_DURATION), "перезапускает"
-    // её фазу с нуля и добавляет вспышку; до и после прохождения фронта точка
-    // ведёт себя как обычно (sync/randPhase от simTime) — так каждый импульс
-    // виден как отдельная кратковременная рябь, а не как необратимая
-    // перестройка фазы навсегда. Импульс k (k=0,1,2,...) приходит в момент
-    // signalStartTime + k*ИНТЕРВАЛ + p.sigDelay. Тип сигнала и число импульсов
-    // читаются здесь же, вживую, а не фиксируются в момент клика — так смена
-    // селектора сразу видна на уже идущем сигнале.
-    const signalOn = els.signalMode.checked && signalActive;
-    let liveMaxPulses = 1;
-    if (signalOn) {
-      const type = els.signalType.value;
-      liveMaxPulses = type === 'continuous' ? Infinity
-        : type === 'count' ? parseInt(els.signalCount.value, 10)
-        : 1;
+    float blinkWave(float phase) {
+      if (uBlinkCurve < 0.5) return 0.5 + 0.5 * sin(phase);
+      float v = triangleV(phase);
+      if (uBlinkCurve < 1.5) return v;
+      if (uBlinkCurve < 2.5) return v * v;
+      if (uBlinkCurve < 3.5) return 1.0 - (1.0 - v) * (1.0 - v);
+      return v * v * (3.0 - 2.0 * v);
     }
 
-    for (let i = 0; i < points.length; i++) {
-      const p = points[i];
-      let phase0, effT, flash = 0;
-      let inPulse = false;
-      if (signalOn && p.sigDelay !== undefined) {
-        const pulseIndex = Math.floor((simTime - signalStartTime - p.sigDelay) / SIGNAL_PULSE_INTERVAL);
-        if (pulseIndex >= 0 && pulseIndex < liveMaxPulses) {
-          const hitTime = signalStartTime + pulseIndex * SIGNAL_PULSE_INTERVAL + p.sigDelay;
-          const localT = simTime - hitTime;
-          if (localT < SIGNAL_FLASH_DURATION) {
+    void main() {
+      // --- сигнал: временно перезапускает фазу с 0 и добавляет вспышку,
+      // пока фронт (sigDelay + k*интервал) проходит через точку — см.
+      // fireSignal()/drawPointsGpu() и комментарий в CPU-версии.
+      // Инициализируем сразу (а не только в ветках ниже) — некоторые GLSL-
+      // компиляторы (ANGLE) ругаются на "possibly uninitialized" даже там,
+      // где по логике переменная гарантированно присваивается.
+      float phase0 = 0.0;
+      float effT = uTime;
+      float flash = 0.0;
+      bool inPulse = false;
+      if (uSignalOn > 0.5) {
+        float pulseIndex = floor((uTime - uSignalStartTime - aSigDelay) / ${SIGNAL_PULSE_INTERVAL});
+        if (pulseIndex >= 0.0 && pulseIndex < uMaxPulses) {
+          float hitTime = uSignalStartTime + pulseIndex * ${SIGNAL_PULSE_INTERVAL} + aSigDelay;
+          float localT = uTime - hitTime;
+          if (localT < ${SIGNAL_FLASH_DURATION}) {
             inPulse = true;
-            phase0 = 0;
+            phase0 = 0.0;
             effT = localT;
-            flash = SIGNAL_FLASH_STRENGTH * (1 - localT / SIGNAL_FLASH_DURATION);
+            flash = ${SIGNAL_FLASH_STRENGTH} * (1.0 - localT / ${SIGNAL_FLASH_DURATION});
           }
         }
       }
       if (!inPulse) {
-        phase0 = sync ? 0 : p.randPhase;
-        effT = simTime;
+        phase0 = uSync > 0.5 ? 0.0 : aRandPhase;
+        effT = uTime;
       }
-      const wave = blinkFn(p.angFreq * effT + phase0);
-      const pulse = 0.3 + 0.7 * wave;
-      // jitterA — случайная амплитудная "дрожь" на точку, чтобы поле не
-      // выглядело механически-одинаковым в обычном (несинхронном) режиме.
-      // В синхронном режиме она, наоборот, ломает саму демонстрацию: точки
-      // на одном радиусе честно мигают в одной фазе (одинаковый wave/pulse),
-      // но с разной АМПЛИТУДОЙ jitterA выглядят как будто НЕ синхронны.
-      // Поэтому в sync-режиме амплитудный джиттер отключается.
-      const jitter = sync ? 1 : p.jitterA;
-      let alpha = p.brightBase * pulse * jitter * overallBrightness + flash;
-      if (alpha < 0) alpha = 0; else if (alpha > 1) alpha = 1;
-      const half = p.size / 2;
-      // Ниже ROUND_MIN_SIZE круг и квадрат неразличимы — не тратим на
-      // arc()+fill() лишнее, рисуем как квадрат вне зависимости от формы.
-      const round = shapeIsRound && p.size >= ROUND_MIN_SIZE;
+      float wave = blinkWave(aAngFreq * effT + phase0);
+      float pulse = 0.3 + 0.7 * wave;
+      float jitter = uSync > 0.5 ? 1.0 : aJitter;
+      float alpha = clamp(aBrightBase * pulse * jitter * uOverallBrightness + flash, 0.0, 1.0);
 
-      if (i >= transformFrom) {
-        if (!batchOpen) { ctx.save(); batchOpen = true; }
-        // Растяжение (stretch) и видимый размер для внешнего наблюдателя
-        // (apparent) — оба действуют вдоль РАДИАЛЬНОЙ оси (просто с разным
-        // знаком: 1/D растягивает, D сжимает), поэтому перемножаются в один
-        // общий радиальный множитель. Приливное сжатие (compress) — вдоль
-        // ТАНГЕНЦИАЛЬНОЙ оси, независимо от них.
-        const sRadial = (stretchOn ? p.stretch : 1) * (apparentOn ? p.apparent : 1);
-        const cTangential = compressOn ? p.compress : 1;
-        // Точка, растянутая/сжатая вдоль радиуса в sRadial раз и сжатая
-        // поперёк в cTangential раз, покрывает на экране примерно в
-        // sRadial*cTangential раз бОльшую (или меньшую) площадь при той же
-        // яркости на пиксель — без компенсации это выглядит как
-        // непропорциональный скачок общей яркости у горизонта. При area>1
-        // альфа приглушается, при area<1 (сжатие уменьшило площадь) —
-        // наоборот усиливается.
-        let combinedAlpha = alpha / Math.sqrt(sRadial * cTangential);
-        if (combinedAlpha > 1) combinedAlpha = 1;
-        ctx.fillStyle = palette[p.mixIdx][Math.round(combinedAlpha * ALPHA_LEVELS)];
-        ctx.setTransform(k * p.cosAng * sRadial, k * p.sinAng * sRadial, -k * p.sinAng * cTangential, k * p.cosAng * cTangential, k * p.rx + E, k * p.ry + F);
-        // В режиме "только к ЧД" сдвигаем центр фигуры в локальных
-        // координатах так, чтобы внешний (дальний от ЧД) край остался на
-        // своей исходной позиции (+half), а весь "избыток" радиального
-        // изменения добавлялся только с внутренней (ближней к ЧД) стороны —
-        // формула работает и при sRadial>1 (растяжение), и при sRadial<1
-        // (сжатие): half/s - half при s=1 даёт 0 (симметричный случай не
-        // меняется). Тангенциальное сжатие всегда симметрично (нет понятия
-        // "направления" поперёк радиуса), поэтому сдвиг по X им не
-        // затрагивается.
-        const cx = stretchOn && stretchDirection === 'toward' ? half / sRadial - half : 0;
-        if (round) {
-          ctx.beginPath();
-          ctx.arc(cx, 0, half, 0, TWO_PI);
-          ctx.fill();
-        } else {
-          ctx.fillRect(cx - half, -half, p.size, p.size);
-        }
-      } else {
-        if (batchOpen) { ctx.restore(); batchOpen = false; }
-        ctx.fillStyle = palette[p.mixIdx][Math.round(alpha * ALPHA_LEVELS)];
-        if (round) {
-          ctx.beginPath();
-          ctx.arc(p.rx, p.ry, half, 0, TWO_PI);
-          ctx.fill();
-        } else {
-          ctx.fillRect(p.rx - half, p.ry - half, p.size, p.size);
-        }
-      }
+      // --- приливное растяжение/сжатие/видимый размер — точное зеркало
+      // матрицы из drawPoints() (CPU-версия): при transformActive=0 (эффект выключен
+      // чекбоксом ИЛИ точке он не нужен) вырождается в чистый масштаб без
+      // поворота, как и там.
+      float transformActive = uTransformOn * aNeedsTransform;
+      float sRadialInner = mix(1.0, aStretch, uStretchOn) * mix(1.0, aApparent, uApparentOn);
+      float cTangInner = mix(1.0, aCompress, uCompressOn);
+      float sRadial = mix(1.0, sRadialInner, transformActive);
+      float cTang = mix(1.0, cTangInner, transformActive);
+      float cosA = mix(1.0, aCosAng, transformActive);
+      float sinA = mix(0.0, aSinAng, transformActive);
+
+      float half_ = aSize * 0.5;
+      float trueCx = uStretchToward > 0.5 ? (half_ / sRadialInner - half_) : 0.0;
+      float cx = mix(0.0, trueCx, transformActive);
+
+      float localX = cx + aCorner.x * half_;
+      float localY = aCorner.y * half_;
+
+      float a = uK * cosA * sRadial;
+      float b = uK * sinA * sRadial;
+      float c = -uK * sinA * cTang;
+      float d = uK * cosA * cTang;
+      float deviceX = a * localX + c * localY + uK * aPos.x + uE.x;
+      float deviceY = b * localX + d * localY + uK * aPos.y + uE.y;
+
+      float clipX = deviceX / uCanvasPx.x * 2.0 - 1.0;
+      float clipY = 1.0 - deviceY / uCanvasPx.y * 2.0;
+      gl_Position = vec4(clipX, clipY, 0.0, 1.0);
+
+      // Компенсация площади при анизотропном растяжении/сжатии — та же
+      // combinedAlpha = alpha/sqrt(sRadial*cTangential), что и в CPU-пути;
+      // при transformActive=0 sRadial=cTang=1, деление на 1 — no-op.
+      vAlpha = min(1.0, alpha / sqrt(max(1e-6, sRadial * cTang)));
+      vCorner = aCorner;
+      vColor = mix(uBaseColor, uHorizonColor, aMixT) / 255.0;
+      vRoundOk = (uRound > 0.5 && aSize >= uRoundMinSize) ? 1.0 : 0.0;
     }
-    if (batchOpen) ctx.restore();
+  `;
+
+  const POINT_FRAG = `#version 300 es
+    precision mediump float;
+    in vec2 vCorner;
+    in vec3 vColor;
+    in float vAlpha;
+    in float vRoundOk;
+    out vec4 fragColor;
+    void main() {
+      if (vRoundOk > 0.5 && dot(vCorner, vCorner) > 1.0) discard;
+      if (vAlpha <= 0.0) discard;
+      fragColor = vec4(vColor, vAlpha);
+    }
+  `;
+
+  // Горизонт/сетка/маркер сигнала — просто закрашенная геометрия в мировых
+  // координатах, трансформированная той же камерой uK/uE, что и точки.
+  const FLAT_VERT = `#version 300 es
+    layout(location=0) in vec2 aPos;
+    uniform float uK;
+    uniform vec2 uE;
+    uniform vec2 uCanvasPx;
+    void main() {
+      vec2 devicePos = uK * aPos + uE;
+      float clipX = devicePos.x / uCanvasPx.x * 2.0 - 1.0;
+      float clipY = 1.0 - devicePos.y / uCanvasPx.y * 2.0;
+      gl_Position = vec4(clipX, clipY, 0.0, 1.0);
+    }
+  `;
+  const FLAT_FRAG = `#version 300 es
+    precision mediump float;
+    uniform vec4 uColor;
+    out vec4 fragColor;
+    void main() { fragColor = uColor; }
+  `;
+
+  // Фон — тот же радиальный градиент (3 опорных цвета, останов на 0.45),
+  // что раньше строил ctx.createRadialGradient (см. updateBgGradient()), но
+  // теперь как fullscreen-проход, НЕ зависящий от камеры (пан/зум фон не
+  // двигают — как и в CPU-версии, где фон заливался ДО translate/scale).
+  const BG_VERT = `#version 300 es
+    layout(location=0) in vec2 aClip;
+    uniform vec2 uCanvasPx;
+    out vec2 vDevicePx;
+    void main() {
+      gl_Position = vec4(aClip, 0.0, 1.0);
+      vDevicePx = vec2((aClip.x * 0.5 + 0.5) * uCanvasPx.x, (1.0 - (aClip.y * 0.5 + 0.5)) * uCanvasPx.y);
+    }
+  `;
+  const BG_FRAG = `#version 300 es
+    precision mediump float;
+    in vec2 vDevicePx;
+    uniform vec2 uCenterPx;
+    uniform float uFieldRadiusPx;
+    uniform vec3 uStop0;
+    uniform vec3 uStop1;
+    uniform vec3 uStop2;
+    out vec4 fragColor;
+    void main() {
+      float t = clamp(length(vDevicePx - uCenterPx) / max(1.0, uFieldRadiusPx), 0.0, 1.0);
+      vec3 col = t < 0.45 ? mix(uStop0, uStop1, t / 0.45) : mix(uStop1, uStop2, (t - 0.45) / 0.55);
+      fragColor = vec4(col / 255.0, 1.0);
+    }
+  `;
+
+  function compileShader(type, src) {
+    const sh = gl.createShader(type);
+    gl.shaderSource(sh, src);
+    gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+      const info = gl.getShaderInfoLog(sh);
+      gl.deleteShader(sh);
+      throw new Error('Shader compile error: ' + info);
+    }
+    return sh;
+  }
+  function linkProgram(vertSrc, fragSrc) {
+    const prog = gl.createProgram();
+    gl.attachShader(prog, compileShader(gl.VERTEX_SHADER, vertSrc));
+    gl.attachShader(prog, compileShader(gl.FRAGMENT_SHADER, fragSrc));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      const info = gl.getProgramInfoLog(prog);
+      gl.deleteProgram(prog);
+      throw new Error('Program link error: ' + info);
+    }
+    return prog;
   }
 
-  // Маркер точки клика, откуда расходится сигнал — контрастный цвет, чтобы
-  // можно было честно увидеть, где на самом деле находится центр волны, и
-  // сравнить с видимым положением фронта (у горизонта фронт распространяется
-  // неравномерно по направлениям — сильно медленнее в сторону/вблизи ЧД,
-  // — поэтому "яркое кольцо" волны может визуально казаться сместившимся от
-  // исходной точки; это ожидаемое искажение, а не смещение самого маркера).
-  function drawSignalOrigin() {
+  const pointProg = linkProgram(POINT_VERT, POINT_FRAG);
+  const flatProg = linkProgram(FLAT_VERT, FLAT_FRAG);
+  const bgProg = linkProgram(BG_VERT, BG_FRAG);
+
+  const PU = {
+    uK: gl.getUniformLocation(pointProg, 'uK'),
+    uE: gl.getUniformLocation(pointProg, 'uE'),
+    uCanvasPx: gl.getUniformLocation(pointProg, 'uCanvasPx'),
+    uTime: gl.getUniformLocation(pointProg, 'uTime'),
+    uSync: gl.getUniformLocation(pointProg, 'uSync'),
+    uOverallBrightness: gl.getUniformLocation(pointProg, 'uOverallBrightness'),
+    uBlinkCurve: gl.getUniformLocation(pointProg, 'uBlinkCurve'),
+    uSignalOn: gl.getUniformLocation(pointProg, 'uSignalOn'),
+    uSignalStartTime: gl.getUniformLocation(pointProg, 'uSignalStartTime'),
+    uMaxPulses: gl.getUniformLocation(pointProg, 'uMaxPulses'),
+    uStretchOn: gl.getUniformLocation(pointProg, 'uStretchOn'),
+    uCompressOn: gl.getUniformLocation(pointProg, 'uCompressOn'),
+    uApparentOn: gl.getUniformLocation(pointProg, 'uApparentOn'),
+    uStretchToward: gl.getUniformLocation(pointProg, 'uStretchToward'),
+    uTransformOn: gl.getUniformLocation(pointProg, 'uTransformOn'),
+    uRound: gl.getUniformLocation(pointProg, 'uRound'),
+    uRoundMinSize: gl.getUniformLocation(pointProg, 'uRoundMinSize'),
+    uBaseColor: gl.getUniformLocation(pointProg, 'uBaseColor'),
+    uHorizonColor: gl.getUniformLocation(pointProg, 'uHorizonColor'),
+  };
+  const FU = {
+    uK: gl.getUniformLocation(flatProg, 'uK'),
+    uE: gl.getUniformLocation(flatProg, 'uE'),
+    uCanvasPx: gl.getUniformLocation(flatProg, 'uCanvasPx'),
+    uColor: gl.getUniformLocation(flatProg, 'uColor'),
+  };
+  const BU = {
+    uCanvasPx: gl.getUniformLocation(bgProg, 'uCanvasPx'),
+    uCenterPx: gl.getUniformLocation(bgProg, 'uCenterPx'),
+    uFieldRadiusPx: gl.getUniformLocation(bgProg, 'uFieldRadiusPx'),
+    uStop0: gl.getUniformLocation(bgProg, 'uStop0'),
+    uStop1: gl.getUniformLocation(bgProg, 'uStop1'),
+    uStop2: gl.getUniformLocation(bgProg, 'uStop2'),
+  };
+
+  // ---- Буферы точек: квад [-1,1]^2 (per-vertex) + per-instance физика ----
+  const pointVao = gl.createVertexArray();
+  gl.bindVertexArray(pointVao);
+  const quadBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+  // aPos(2) + aCosAng + aSinAng + aSize + aStretch + aCompress + aApparent +
+  // aMixT + aNeedsTransform + aAngFreq + aRandPhase + aBrightBase + aJitter +
+  // aSigDelay = 15 float/точку — см. раскладку в syncGpuStatic().
+  const FLOATS_PER_POINT = 15;
+  const POINT_STRIDE = FLOATS_PER_POINT * 4;
+  const instBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, instBuf);
+  const instAttrs = [
+    [1, 2, 0], [2, 1, 8], [3, 1, 12], [4, 1, 16], [5, 1, 20], [6, 1, 24],
+    [7, 1, 28], [8, 1, 32], [9, 1, 36], [10, 1, 40], [11, 1, 44], [12, 1, 48],
+    [13, 1, 52], [14, 1, 56],
+  ];
+  for (const [loc, size, offset] of instAttrs) {
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, size, gl.FLOAT, false, POINT_STRIDE, offset);
+    gl.vertexAttribDivisor(loc, 1);
+  }
+  gl.bindVertexArray(null);
+
+  // ---- Буфер "плоской" геометрии (горизонт/сетка/маркер сигнала) —
+  // переиспользуется под разную геометрию каждый раз через bufferData
+  // (см. drawFlat()), отдельный буфер на элемент тут не нужен: геометрия
+  // дешёвая и пересчитывается заново каждый кадр, как и в CPU-версии.
+  const flatVao = gl.createVertexArray();
+  gl.bindVertexArray(flatVao);
+  const flatBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, flatBuf);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  gl.bindVertexArray(null);
+
+  // ---- Фон: один статичный "оверсайз"-треугольник на весь экран ----
+  const bgVao = gl.createVertexArray();
+  gl.bindVertexArray(bgVao);
+  const bgBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, bgBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  gl.bindVertexArray(null);
+
+  const BLINK_CURVE_INDEX = { sine: 0, linear: 1, easeIn: 2, easeOut: 3, easeInOut: 4 };
+
+  // Перезаливает "статический" per-instance буфер точек — всё, что физика
+  // меняет РЕЖЕ, чем каждый кадр (позиция, приливные коэффициенты, цвет,
+  // задержка сигнала). Вызывается из generatePoints()/recomputePhysics()/
+  // recomputeSizes()/fireSignal() — то есть ровно там же, где эти величины
+  // у points[] реально пересчитываются.
+  function syncGpuStatic() {
+    const n = points.length;
+    const buf = new Float32Array(n * FLOATS_PER_POINT);
+    for (let i = 0; i < n; i++) {
+      const p = points[i];
+      const o = i * FLOATS_PER_POINT;
+      buf[o] = p.rx;
+      buf[o + 1] = p.ry;
+      buf[o + 2] = p.cosAng;
+      buf[o + 3] = p.sinAng;
+      buf[o + 4] = p.size;
+      buf[o + 5] = p.stretch;
+      buf[o + 6] = p.compress;
+      buf[o + 7] = p.apparent;
+      buf[o + 8] = p.mixIdx / MIX_LEVELS;
+      buf[o + 9] = i >= transformStartIndex ? 1 : 0;
+      buf[o + 10] = p.angFreq;
+      buf[o + 11] = p.randPhase;
+      buf[o + 12] = p.brightBase;
+      buf[o + 13] = p.jitterA;
+      buf[o + 14] = p.sigDelay !== undefined ? p.sigDelay : 0;
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, instBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, buf, gl.DYNAMIC_DRAW);
+  }
+
+  // r/g/b в диапазоне 0..1, a — альфа (<1 включает блендинг). vertsXY —
+  // Float32Array мировых (CSS px) x,y-пар; камера (uK/uE) применяется в
+  // FLAT_VERT так же, как и у точек.
+  function drawFlat(vertsXY, mode, r, g, b, a, camK, camEx, camEy) {
+    gl.bindVertexArray(flatVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, flatBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, vertsXY, gl.DYNAMIC_DRAW);
+    gl.useProgram(flatProg);
+    gl.uniform1f(FU.uK, camK);
+    gl.uniform2f(FU.uE, camEx, camEy);
+    gl.uniform2f(FU.uCanvasPx, canvas.width, canvas.height);
+    gl.uniform4f(FU.uColor, r, g, b, a);
+    if (a < 1) {
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    } else {
+      gl.disable(gl.BLEND);
+    }
+    gl.drawArrays(mode, 0, vertsXY.length / 2);
+    gl.bindVertexArray(null);
+  }
+
+  function drawHorizonGpu(camK, camEx, camEy) {
+    const segs = 64;
+    const verts = new Float32Array((segs + 2) * 2);
+    verts[0] = centerX;
+    verts[1] = centerY;
+    for (let i = 0; i <= segs; i++) {
+      const ang = (i / segs) * TWO_PI;
+      verts[(i + 1) * 2] = centerX + Math.cos(ang) * rsPx;
+      verts[(i + 1) * 2 + 1] = centerY + Math.sin(ang) * rsPx;
+    }
+    drawFlat(verts, gl.TRIANGLE_FAN, 0, 0, 0, 1, camK, camEx, camEy);
+  }
+
+  function drawGridGpu(camK, camEx, camEy) {
+    const Lmax = properDistance(fieldRadius, rsPx);
+    const segs = 96;
+    const rings = 11;
+    const ringVerts = new Float32Array(segs * 2);
+    const col = [94 / 255, 234 / 255, 212 / 255, 0.4];
+    for (let i = 1; i <= rings; i++) {
+      const r = rsPx + (fieldRadius - rsPx) * (i / rings);
+      const dr = distortedRadius(r, rsPx, fieldRadius, Lmax);
+      for (let s = 0; s < segs; s++) {
+        const ang = (s / segs) * TWO_PI;
+        ringVerts[s * 2] = centerX + Math.cos(ang) * dr;
+        ringVerts[s * 2 + 1] = centerY + Math.sin(ang) * dr;
+      }
+      drawFlat(ringVerts, gl.LINE_LOOP, col[0], col[1], col[2], col[3], camK, camEx, camEy);
+    }
+    const spokes = 20;
+    const spokeVerts = new Float32Array(spokes * 4);
+    for (let i = 0; i < spokes; i++) {
+      const ang = (i / spokes) * TWO_PI;
+      spokeVerts[i * 4] = centerX + Math.cos(ang) * rsPx;
+      spokeVerts[i * 4 + 1] = centerY + Math.sin(ang) * rsPx;
+      spokeVerts[i * 4 + 2] = centerX + Math.cos(ang) * fieldRadius;
+      spokeVerts[i * 4 + 3] = centerY + Math.sin(ang) * fieldRadius;
+    }
+    drawFlat(spokeVerts, gl.LINES, col[0], col[1], col[2], col[3], camK, camEx, camEy);
+  }
+
+  // Маркер точки клика, откуда расходится сигнал — см. комментарий у CPU-
+  // версии drawSignalOrigin(): контрастный цвет, чтобы честно сравнить с
+  // видимым положением фронта волны у горизонта.
+  function drawSignalOriginGpu(camK, camEx, camEy) {
     const r = 2.5 / zoom;
-    ctx.save();
-    ctx.fillStyle = 'rgba(0,215,235,0.7)';
-    ctx.strokeStyle = 'rgba(0,0,0,0.7)';
-    ctx.lineWidth = 1 / zoom;
-    ctx.beginPath();
-    ctx.arc(signalOriginX, signalOriginY, r, 0, TWO_PI);
-    ctx.fill();
-    ctx.stroke();
-    ctx.restore();
+    const segs = 24;
+    const verts = new Float32Array((segs + 2) * 2);
+    verts[0] = signalOriginX;
+    verts[1] = signalOriginY;
+    for (let i = 0; i <= segs; i++) {
+      const ang = (i / segs) * TWO_PI;
+      verts[(i + 1) * 2] = signalOriginX + Math.cos(ang) * r;
+      verts[(i + 1) * 2 + 1] = signalOriginY + Math.sin(ang) * r;
+    }
+    drawFlat(verts, gl.TRIANGLE_FAN, 0, 215 / 255, 235 / 255, 0.7, camK, camEx, camEy);
+    // Контур — та же окружность без центральной вершины (fan -> loop).
+    drawFlat(verts.slice(2), gl.LINE_LOOP, 0, 0, 0, 0.7, camK, camEx, camEy);
+  }
+
+  function drawPointsGpu(camK, camEx, camEy) {
+    const n = points.length;
+    if (n === 0) return;
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.useProgram(pointProg);
+    gl.bindVertexArray(pointVao);
+
+    gl.uniform1f(PU.uK, camK);
+    gl.uniform2f(PU.uE, camEx, camEy);
+    gl.uniform2f(PU.uCanvasPx, canvas.width, canvas.height);
+    gl.uniform1f(PU.uTime, simTime);
+    gl.uniform1f(PU.uSync, els.syncMode.checked ? 1 : 0);
+    gl.uniform1f(PU.uOverallBrightness, overallBrightness);
+    gl.uniform1f(PU.uBlinkCurve, BLINK_CURVE_INDEX[els.blinkCurve.value] ?? 0);
+
+    const stretchOn = els.tidalStretch.checked;
+    const compressOn = els.tidalCompress.checked;
+    const apparentOn = els.apparentSize.checked;
+    gl.uniform1f(PU.uStretchOn, stretchOn ? 1 : 0);
+    gl.uniform1f(PU.uCompressOn, compressOn ? 1 : 0);
+    gl.uniform1f(PU.uApparentOn, apparentOn ? 1 : 0);
+    gl.uniform1f(PU.uStretchToward, stretchDirection === 'toward' ? 1 : 0);
+    gl.uniform1f(PU.uTransformOn, (stretchOn || compressOn || apparentOn) ? 1 : 0);
+
+    // Тип сигнала и число импульсов читаются здесь же, вживую (как и в
+    // CPU-версии) — 1e9 вместо Infinity: pulseIndex за сессию до него не
+    // дотянется, а GLSL с настоящей Infinity в сравнениях менее надёжен.
+    const signalOn = els.signalMode.checked && signalActive;
+    let liveMaxPulses = 1;
+    if (signalOn) {
+      const type = els.signalType.value;
+      liveMaxPulses = type === 'continuous' ? 1e9
+        : type === 'count' ? parseInt(els.signalCount.value, 10)
+        : 1;
+    }
+    gl.uniform1f(PU.uSignalOn, signalOn ? 1 : 0);
+    gl.uniform1f(PU.uSignalStartTime, signalStartTime);
+    gl.uniform1f(PU.uMaxPulses, liveMaxPulses);
+
+    gl.uniform1f(PU.uRound, els.pointShape.value === 'circle' ? 1 : 0);
+    gl.uniform1f(PU.uRoundMinSize, ROUND_MIN_SIZE);
+    gl.uniform3f(PU.uBaseColor, baseColor.r, baseColor.g, baseColor.b);
+    gl.uniform3f(PU.uHorizonColor, horizonColor.r, horizonColor.g, horizonColor.b);
+
+    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, n);
+    gl.bindVertexArray(null);
   }
 
   function draw() {
-    ctx.fillStyle = bgGradient;
-    ctx.fillRect(0, 0, width, height);
+    const camK = dpr * zoom;
+    const camEx = dpr * (centerX + panX - zoom * centerX);
+    const camEy = dpr * (centerY + panY - zoom * centerY);
 
-    ctx.save();
-    ctx.translate(panX, panY);
-    ctx.translate(centerX, centerY);
-    ctx.scale(zoom, zoom);
-    ctx.translate(-centerX, -centerY);
+    gl.viewport(0, 0, canvas.width, canvas.height);
 
-    if (els.showGrid.checked) drawGrid();
-    drawPoints();
-    drawHorizon();
-    if (els.signalMode.checked && signalActive) drawSignalOrigin();
+    // Фон — как и в CPU-версии, заливается независимо от камеры.
+    gl.disable(gl.BLEND);
+    gl.useProgram(bgProg);
+    gl.bindVertexArray(bgVao);
+    gl.uniform2f(BU.uCanvasPx, canvas.width, canvas.height);
+    gl.uniform2f(BU.uCenterPx, centerX * dpr, centerY * dpr);
+    gl.uniform1f(BU.uFieldRadiusPx, fieldRadius * dpr);
+    gl.uniform3f(BU.uStop0, bgStop0.r, bgStop0.g, bgStop0.b);
+    gl.uniform3f(BU.uStop1, bgStop1.r, bgStop1.g, bgStop1.b);
+    gl.uniform3f(BU.uStop2, bgStop2.r, bgStop2.g, bgStop2.b);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindVertexArray(null);
 
-    ctx.restore();
+    if (els.showGrid.checked) drawGridGpu(camK, camEx, camEy);
+    drawPointsGpu(camK, camEx, camEy);
+    drawHorizonGpu(camK, camEx, camEy);
+    if (els.signalMode.checked && signalActive) drawSignalOriginGpu(camK, camEx, camEy);
   }
 
   // Счётчик FPS: считаем кадры в скользящем окне ~500мс и раз в окно
@@ -2206,4 +2494,5 @@
   applySettings();
 
   requestAnimationFrame(frame);
+  }
 })();
