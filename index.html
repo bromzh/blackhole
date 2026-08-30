@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+  <title data-i18n="pageTitle">Schwarzschild Black Hole — gravitational time dilation</title>
+  <link
+    rel="stylesheet"
+    href="style.css"
+  >
+</head>
+
+<body>
+  <canvas id="scene"></canvas>
+
+  <button
+    type="button"
+    id="hudShowBtn"
+    class="hudEdgeBtn"
+    aria-label="Show menu"
+  >&#9776;</button>
+
+  <div class="hud">
+    <button
+      type="button"
+      id="hudHideBtn"
+      class="hudCloseBtn"
+      aria-label="Hide menu"
+    >&#10005;</button>
+    <h1 data-i18n="h1">Schwarzschild Black Hole</h1>
+
+    <div class="row langRow">
+      <label for="langSelect">Language / Язык</label>
+      <select id="langSelect">
+        <option
+          value="auto"
+          selected
+        >Auto / Авто</option>
+        <option value="en">English</option>
+        <option value="ru">Русский</option>
+      </select>
+    </div>
+
+    <button
+      type="button"
+      id="introToggle"
+      class="accordionToggle"
+      aria-expanded="true"
+    >
+      <span data-i18n="introToggle">About this simulation</span>
+      <span
+        class="accordionIcon"
+        id="introToggleIcon"
+      >&#9662;</span>
+    </button>
+    <p
+      class="hint"
+      id="introText"
+      data-i18n="introText"
+    >Points are stationary "beacons" around the black hole. Their pulsing slows down and reddens near the event horizon due to gravitational time dilation and gravitational redshift (Schwarzschild metric, exact formulas). Points can
+      optionally stretch toward the horizon — the exact tidal-stretch factor 1/√(1-Rs/r). Mouse wheel — zoom, drag — pan, double-click — recenter (without resetting zoom). In signal mode, clicking the field launches a wave spreading from
+      the click point: watch it lag and distort near the horizon.</p>
+
+    <h2
+      class="groupTitle"
+      data-i18n="group_simulation"
+    >Simulation</h2>
+
+    <div class="row">
+      <label
+        for="mass"
+        data-i18n="mass_label"
+      >Black hole mass</label>
+      <input
+        id="mass"
+        type="range"
+        min="0"
+        max="1000"
+        value="500"
+        step="1"
+      >
+      <div
+        class="readout"
+        id="massReadout"
+      >—</div>
+    </div>
+
+    <div class="row checkboxRow">
+      <label><input
+          id="noGravity"
+          type="checkbox"
+        > <span data-i18n="noGravity_label">Disable gravity (for comparison)</span></label>
+      <p
+        class="rowHint"
+        data-i18n="noGravity_hint"
+      >The BH stops affecting point phase, color and stretch — handy for comparing against the curved-space case.</p>
+    </div>
+
+    <div class="row">
+      <label
+        for="freq"
+        data-i18n="freq_label"
+      >Base pulse frequency (far from the BH)</label>
+      <input
+        id="freq"
+        type="range"
+        min="10"
+        max="300"
+        value="90"
+        step="1"
+      >
+      <div
+        class="readout"
+        id="freqReadout"
+      >—</div>
+    </div>
+
+    <div class="row">
+      <label
+        for="density"
+        data-i18n="density_label"
+      >Point density</label>
+      <input
+        id="density"
+        type="range"
+        min="1000"
+        max="50000"
+        value="9000"
+        step="500"
+      >
+      <div
+        class="readout"
+        id="densityReadout"
+      >—</div>
+    </div>
+
+    <div class="row checkboxRow">
+      <label><input
+          id="syncMode"
+          type="checkbox"
+        > <span data-i18n="syncMode_label">Sync mode (shared start phase)</span></label>
+    </div>
+
+    <div class="row">
+      <button
+        id="resetPhases"
+        type="button"
+        class="btn"
+        data-i18n="resetPhases_label"
+      >Reset point phase</button>
+    </div>
+
+    <div class="row checkboxRow">
+      <label><input
+          id="pause"
+          type="checkbox"
+        > <span data-i18n="pause_label">Pause</span></label>
+    </div>
+
+    <div class="row checkboxRow">
+      <label><input
+          id="signalMode"
+          type="checkbox"
+        > <span data-i18n="signalMode_label">Signal mode (click the field to launch a wave)</span></label>
+      <p
+        class="rowHint"
+        data-i18n="signalMode_hint"
+      >Clicking inside the horizon or outside the point field stops sending the signal.</p>
+    </div>
+
+    <div
+      class="row"
+      id="signalTypeRow"
+      style="display:none;"
+    >
+      <label
+        for="signalType"
+        data-i18n="signalType_label"
+      >Signal type</label>
+      <select id="signalType">
+        <option
+          value="single"
+          selected
+          data-i18n="signalType_single"
+        >Single</option>
+        <option
+          value="continuous"
+          data-i18n="signalType_continuous"
+        >Continuous</option>
+        <option
+          value="count"
+          data-i18n="signalType_count"
+        >Fixed number</option>
+      </select>
+    </div>
+
+    <div
+      class="row"
+      id="signalCountRow"
+      style="display:none;"
+    >
+      <label
+        for="signalCount"
+        data-i18n="signalCount_label"
+      >Number of signals</label>
+      <input
+        id="signalCount"
+        type="range"
+        min="1"
+        max="100"
+        value="5"
+        step="1"
+      >
+      <div
+        class="readout"
+        id="signalCountReadout"
+      >—</div>
+    </div>
+
+    <div class="row checkboxRow">
+      <label><input
+          id="tidalStretch"
+          type="checkbox"
+        > <span data-i18n="tidalStretch_label">GR point stretching (spatial curvature)</span></label>
+    </div>
+
+    <div
+      class="row"
+      id="stretchCoefficientRow"
+      style="display:none;"
+    >
+      <label
+        for="stretchCoefficient"
+        data-i18n="stretchCoefficient_label"
+      >Stretch coefficient</label>
+      <input
+        id="stretchCoefficient"
+        type="range"
+        min="10"
+        max="300"
+        value="100"
+        step="5"
+      >
+      <div
+        class="readout"
+        id="stretchCoefficientReadout"
+      >—</div>
+    </div>
+
+    <div
+      class="row"
+      id="stretchDirectionRow"
+      style="display:none;"
+    >
+      <label
+        for="stretchDirection"
+        data-i18n="stretchDirection_label"
+      >Stretch direction</label>
+      <select id="stretchDirection">
+        <option
+          value="toward"
+          selected
+          data-i18n="stretchDirection_toward"
+        >Toward the black hole only</option>
+        <option
+          value="both"
+          data-i18n="stretchDirection_both"
+        >Symmetric (both directions)</option>
+      </select>
+    </div>
+
+    <div class="row checkboxRow">
+      <label><input
+          id="tidalCompress"
+          type="checkbox"
+        > <span data-i18n="tidalCompress_label">Tidal compression (perpendicular to radius)</span></label>
+      <p
+        class="rowHint"
+        data-i18n="tidalCompress_hint"
+      >A different GR effect from stretching above: the tidal tensor also squeezes perpendicular to the radius (half the stretch's magnitude) — and, unlike the stretch, stays finite right at the horizon.</p>
+    </div>
+
+    <div
+      class="row"
+      id="compressCoefficientRow"
+      style="display:none;"
+    >
+      <label
+        for="compressCoefficient"
+        data-i18n="compressCoefficient_label"
+      >Compression coefficient</label>
+      <input
+        id="compressCoefficient"
+        type="range"
+        min="10"
+        max="300"
+        value="100"
+        step="5"
+      >
+      <div
+        class="readout"
+        id="compressCoefficientReadout"
+      >—</div>
+    </div>
+
+    <div class="row checkboxRow">
+      <label><input
+          id="apparentSize"
+          type="checkbox"
+        > <span data-i18n="apparentSize_label">Apparent size (distant observer)</span></label>
+      <p
+        class="rowHint"
+        data-i18n="apparentSize_hint"
+      >A third, independent effect: how a FIXED real-size object would look to a distant observer — the reverse of the stretch above. Radial size shrinks by D(r) toward the horizon; tangential size is unchanged.</p>
+    </div>
+
+    <div
+      class="row"
+      id="apparentCoefficientRow"
+      style="display:none;"
+    >
+      <label
+        for="apparentCoefficient"
+        data-i18n="apparentCoefficient_label"
+      >Apparent-size coefficient</label>
+      <input
+        id="apparentCoefficient"
+        type="range"
+        min="10"
+        max="300"
+        value="100"
+        step="5"
+      >
+      <div
+        class="readout"
+        id="apparentCoefficientReadout"
+      >—</div>
+    </div>
+
+    <div class="row">
+      <label
+        for="distribution"
+        data-i18n="distribution_label"
+      >Point distribution</label>
+      <select id="distribution">
+        <option
+          value="random"
+          selected
+          data-i18n="distribution_random"
+        >Random</option>
+        <option
+          value="polar"
+          data-i18n="distribution_polar"
+        >Grid — radial coordinates</option>
+        <option
+          value="cartesian"
+          data-i18n="distribution_cartesian"
+        >Grid — cartesian coordinates</option>
+      </select>
+    </div>
+
+    <h2
+      class="groupTitle"
+      data-i18n="group_display"
+    >Display settings</h2>
+
+    <div class="row">
+      <label
+        for="overallBrightness"
+        data-i18n="overallBrightness_label"
+      >Overall point brightness</label>
+      <input
+        id="overallBrightness"
+        type="range"
+        min="10"
+        max="200"
+        value="100"
+        step="1"
+      >
+      <div
+        class="readout"
+        id="overallBrightnessReadout"
+      >—</div>
+    </div>
+
+    <div class="row">
+      <label
+        for="brightness"
+        data-i18n="brightness_label"
+      >Point brightness near horizon</label>
+      <input
+        id="brightness"
+        type="range"
+        min="0"
+        max="150"
+        value="18"
+        step="1"
+      >
+      <div
+        class="readout"
+        id="brightnessReadout"
+      >—</div>
+    </div>
+
+    <div class="row">
+      <label
+        for="colorGradient"
+        data-i18n="colorGradient_label"
+      >Color transition sharpness</label>
+      <input
+        id="colorGradient"
+        type="range"
+        min="0"
+        max="500"
+        value="400"
+        step="10"
+      >
+      <div
+        class="readout"
+        id="colorGradientReadout"
+      >—</div>
+      <p
+        class="rowHint"
+        data-i18n="colorGradient_hint"
+      >Higher — points keep their original color longer and shift to the horizon color only right near it.</p>
+    </div>
+
+    <div class="row">
+      <label
+        for="sizeMode"
+        data-i18n="sizeMode_label"
+      >Point size</label>
+      <select id="sizeMode">
+        <option
+          value="random"
+          selected
+          data-i18n="sizeMode_random"
+        >Random</option>
+        <option
+          value="fixed"
+          data-i18n="sizeMode_fixed"
+        >Fixed</option>
+      </select>
+    </div>
+
+    <div
+      class="row"
+      id="fixedSizeRow"
+      style="display:none;"
+    >
+      <label
+        for="fixedSize"
+        data-i18n="fixedSize_label"
+      >Fixed size value</label>
+      <input
+        id="fixedSize"
+        type="range"
+        min="5"
+        max="40"
+        value="20"
+        step="1"
+      >
+      <div
+        class="readout"
+        id="fixedSizeReadout"
+      >—</div>
+    </div>
+
+    <div class="row">
+      <label
+        for="pointShape"
+        data-i18n="pointShape_label"
+      >Point shape</label>
+      <select id="pointShape">
+        <option
+          value="square"
+          selected
+          data-i18n="pointShape_square"
+        >Square</option>
+        <option
+          value="circle"
+          data-i18n="pointShape_circle"
+        >Circle</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <label
+        for="zoom"
+        data-i18n="zoom_label"
+      >Zoom (or mouse wheel)</label>
+      <input
+        id="zoom"
+        type="range"
+        min="35"
+        max="1000"
+        value="100"
+        step="1"
+      >
+      <div
+        class="readout"
+        id="zoomReadout"
+      >—</div>
+    </div>
+
+    <h2
+      class="groupTitle"
+      data-i18n="group_colors"
+    >Colors</h2>
+
+    <div class="row">
+      <label data-i18n="baseColor_label">Default point color</label>
+      <div
+        class="swatchRow"
+        id="baseSwatches"
+      ></div>
+    </div>
+
+    <div class="row checkboxRow">
+      <label><input
+          id="horizonAuto"
+          type="checkbox"
+          checked
+        > <span data-i18n="horizonAuto_label">Automatic Doppler shift toward horizon</span></label>
+    </div>
+
+    <div
+      class="row"
+      id="horizonSwatchRow"
+      style="display:none;"
+    >
+      <label data-i18n="horizonColor_label">Point color near horizon</label>
+      <div
+        class="swatchRow"
+        id="horizonSwatches"
+      ></div>
+    </div>
+
+    <div class="row">
+      <button
+        id="resetPalette"
+        type="button"
+        class="btn"
+        data-i18n="resetPalette_label"
+      >Reset palette</button>
+    </div>
+
+    <div class="row">
+      <label
+        for="paletteSelect"
+        data-i18n="paletteSelect_label"
+      >Saved palettes</label>
+      <select id="paletteSelect">
+        <option
+          value=""
+          data-i18n="paletteSelect_placeholder"
+        >— select —</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <label
+        for="paletteName"
+        data-i18n="paletteName_label"
+      >New palette name</label>
+      <input
+        id="paletteName"
+        type="text"
+        data-i18n-placeholder="paletteName_placeholder"
+        placeholder="E.g.: Sunset"
+        maxlength="30"
+      >
+    </div>
+
+    <div class="row">
+      <button
+        id="savePaletteBtn"
+        type="button"
+        class="btn"
+        data-i18n="savePalette_label"
+      >Save current palette</button>
+    </div>
+
+    <div class="row">
+      <button
+        id="deletePaletteBtn"
+        type="button"
+        class="btn"
+        data-i18n="deletePalette_label"
+      >Delete selected palette</button>
+    </div>
+
+    <h2
+      class="groupTitle"
+      data-i18n="group_animation"
+    >Animation &amp; more</h2>
+
+    <div class="row">
+      <label
+        for="speed"
+        data-i18n="speed_label"
+      >Animation speed</label>
+      <input
+        id="speed"
+        type="range"
+        min="10"
+        max="400"
+        value="100"
+        step="1"
+      >
+      <div
+        class="readout"
+        id="speedReadout"
+      >—</div>
+    </div>
+
+    <div class="row">
+      <label
+        for="blinkCurve"
+        data-i18n="blinkCurve_label"
+      >Blink curve</label>
+      <select id="blinkCurve">
+        <option
+          value="sine"
+          data-i18n="blinkCurve_sine"
+        >Smooth (sine)</option>
+        <option
+          value="linear"
+          data-i18n="blinkCurve_linear"
+        >Linear</option>
+        <option
+          value="easeIn"
+          selected
+          data-i18n="blinkCurve_easeIn"
+        >Ease-in</option>
+        <option
+          value="easeOut"
+          data-i18n="blinkCurve_easeOut"
+        >Ease-out</option>
+        <option
+          value="easeInOut"
+          data-i18n="blinkCurve_easeInOut"
+        >Ease-in-out</option>
+      </select>
+    </div>
+
+    <div class="row checkboxRow">
+      <label><input
+          id="showGrid"
+          type="checkbox"
+        > <span data-i18n="showGrid_label">Show space-curvature grid</span></label>
+    </div>
+    <div class="row checkboxRow">
+      <label><input
+          id="showTooltip"
+          type="checkbox"
+        > <span data-i18n="showTooltip_label">Time-dilation tooltip at cursor</span></label>
+    </div>
+
+    <div class="row">
+      <button
+        id="copySettings"
+        type="button"
+        class="btn"
+        data-i18n="copySettings_label"
+      >Copy settings</button>
+    </div>
+
+    <div class="row">
+      <button
+        id="resetSettings"
+        type="button"
+        class="btn"
+        data-i18n="resetSettings_label"
+      >Reset settings</button>
+    </div>
+
+    <p
+      class="hint autosave-hint"
+      data-i18n="autosaveHint"
+    >Settings are saved automatically.</p>
+  </div>
+
+  <div
+    id="infoPanel"
+    class="floatingPanel"
+  >
+    <div class="floatingPanelHeader">
+      <span data-i18n="infoPanel_title">Info</span>
+      <button
+        type="button"
+        id="infoPanelToggle"
+        class="floatingPanelToggle"
+        aria-expanded="true"
+      >&#9662;</button>
+    </div>
+    <div
+      class="stats"
+      id="stats"
+    ></div>
+    <div
+      class="stats"
+      id="fpsReadout"
+    >FPS: —</div>
+  </div>
+
+  <div
+    id="cursorTooltip"
+    class="cursor-tooltip"
+  ></div>
+
+  <script src="blackhole.js"></script>
+</body>
+
+</html>

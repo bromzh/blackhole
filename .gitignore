@@ -1,0 +1,5 @@
+# Local tooling config, not part of the project
+.claude/
+
+# Personal working notes / feature backlog, not meant for the public repo
+features.txt
