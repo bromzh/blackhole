@@ -347,7 +347,7 @@
   const DEFAULT_BASE_KEY = 'violet';
   const DEFAULT_HORIZON_MODE = 'auto';
   const DEFAULT_HORIZON_KEY = 'indigo';
-  const DEFAULT_INTRO_EXPANDED = false;
+  const DEFAULT_INTRO_EXPANDED = true;
   const DEFAULT_PAN_X = -67;
   const DEFAULT_PAN_Y = 24;
 
