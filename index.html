@@ -230,6 +230,20 @@
           type="checkbox"
           checked
         > <span data-i18n="tidalStretch_label">GR point stretching (spatial curvature)</span></label>
+      <button
+        type="button"
+        id="stretchInfoToggle"
+        class="accordionToggle infoToggle"
+        aria-expanded="false"
+      >
+        <span data-i18n="stretchInfoToggle_label">What does this show?</span>
+        <span class="accordionIcon">&#9662;</span>
+      </button>
+      <p
+        class="hint collapsed"
+        id="stretchInfoText"
+        data-i18n="stretchInfo_text"
+      >This is the exact Schwarzschild metric factor 1/√(1−Rs/r) — how much more "proper" (actually measured) radial distance there is near the horizon than the flat coordinate grid suggests. It's a real, exact quantity, but stretching a point's shape by it is a visualization trick: a single point has no size of its own to stretch, so this makes an otherwise invisible fact about curved space visible rather than showing something you'd literally see happen to a small object. In plain language: space itself is stretched near a black hole, so a tape measure laid toward the horizon would read a longer length than the map distance implies — the elongated dots are a way to draw that stretch.</p>
     </div>
 
     <div
@@ -282,10 +296,20 @@
           id="tidalCompress"
           type="checkbox"
         > <span data-i18n="tidalCompress_label">Tidal compression (perpendicular to radius)</span></label>
+      <button
+        type="button"
+        id="compressInfoToggle"
+        class="accordionToggle infoToggle"
+        aria-expanded="false"
+      >
+        <span data-i18n="compressInfoToggle_label">What does this show?</span>
+        <span class="accordionIcon">&#9662;</span>
+      </button>
       <p
-        class="rowHint"
-        data-i18n="tidalCompress_hint"
-      >A different GR effect from stretching above: the tidal tensor also squeezes perpendicular to the radius (half the stretch's magnitude) — and, unlike the stretch, stays finite right at the horizon.</p>
+        class="hint collapsed"
+        id="compressInfoText"
+        data-i18n="compressInfo_text"
+      >This visualizes the real tidal force from the Schwarzschild geodesic-deviation tensor: gravity pulls harder on the near side of an extended body than the far side, stretching it along the radius while squeezing it inward from the sides. Because the vacuum tensor is traceless, that sideways squeeze is always exactly half as strong as the radial stretch, and — unlike a purely geometric stretching of space — it stays finite right at the horizon; it only becomes destructive somewhat deeper inside. This is the same, genuinely physical effect popularly called "spaghettification": if you fell feet-first toward a black hole, gravity would stretch you head-to-toe while squeezing your sides inward, and each dot narrowing sideways is a small-scale picture of exactly that squeeze.</p>
     </div>
 
     <div
@@ -317,10 +341,20 @@
           type="checkbox"
           checked
         > <span data-i18n="apparentSize_label">Apparent size (distant observer)</span></label>
+      <button
+        type="button"
+        id="apparentInfoToggle"
+        class="accordionToggle infoToggle"
+        aria-expanded="false"
+      >
+        <span data-i18n="apparentInfoToggle_label">What does this show?</span>
+        <span class="accordionIcon">&#9662;</span>
+      </button>
       <p
-        class="rowHint"
-        data-i18n="apparentSize_hint"
-      >A third, independent effect: how a FIXED real-size object would look to a distant observer — the reverse of the stretch above. Radial size shrinks by D(r) toward the horizon; tangential size is unchanged.</p>
+        class="hint collapsed"
+        id="apparentInfoText"
+        data-i18n="apparentInfo_text"
+      >This shows how an object of a fixed real (proper) size would look to a distant observer, rather than how the coordinate grid the points sit on behaves. Its radial extent shrinks by the factor D(r) = √(1−Rs/r) as it nears the horizon — the same factor that governs gravitational redshift and time dilation — while its size across the radius stays exactly the same, since the Schwarzschild angular part of the metric has no such factor. It mixes a real GR quantity with a simplified observer model (no actual ray-tracing through bent light paths), so treat it as a physically grounded approximation rather than a literal rendered photograph. In plain language: a spaceship of the same real size would look shorter — but not narrower — the closer it drifts toward a black hole, as seen from far away, and that's the shrinking this shows directly.</p>
     </div>
 
     <div

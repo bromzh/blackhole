@@ -86,15 +86,19 @@
       freq_label: 'Base pulse frequency (far from the BH)',
       density_label: 'Point density',
       tidalStretch_label: 'GR point stretching (spatial curvature)',
+      stretchInfoToggle_label: 'What does this show?',
+      stretchInfo_text: 'This is the exact Schwarzschild metric factor 1/√(1−Rs/r) — how much more "proper" (actually measured) radial distance there is near the horizon than the flat coordinate grid suggests. It\'s a real, exact quantity, but stretching a point\'s shape by it is a visualization trick: a single point has no size of its own to stretch, so this makes an otherwise invisible fact about curved space visible rather than showing something you\'d literally see happen to a small object. In plain language: space itself is stretched near a black hole, so a tape measure laid toward the horizon would read a longer length than the map distance implies — the elongated dots are a way to draw that stretch.',
       stretchCoefficient_label: 'Stretch coefficient',
       stretchDirection_label: 'Stretch direction',
       stretchDirection_toward: 'Toward the black hole only',
       stretchDirection_both: 'Symmetric (both directions)',
       tidalCompress_label: 'Tidal compression (perpendicular to radius)',
-      tidalCompress_hint: 'A different GR effect from stretching above: the tidal tensor also squeezes perpendicular to the radius (half the stretch\'s magnitude) — and, unlike the stretch, stays finite right at the horizon.',
+      compressInfoToggle_label: 'What does this show?',
+      compressInfo_text: 'This visualizes the real tidal force from the Schwarzschild geodesic-deviation tensor: gravity pulls harder on the near side of an extended body than the far side, stretching it along the radius while squeezing it inward from the sides. Because the vacuum tensor is traceless, that sideways squeeze is always exactly half as strong as the radial stretch, and — unlike a purely geometric stretching of space — it stays finite right at the horizon; it only becomes destructive somewhat deeper inside. This is the same, genuinely physical effect popularly called "spaghettification": if you fell feet-first toward a black hole, gravity would stretch you head-to-toe while squeezing your sides inward, and each dot narrowing sideways is a small-scale picture of exactly that squeeze.',
       compressCoefficient_label: 'Compression coefficient',
       apparentSize_label: 'Apparent size (distant observer)',
-      apparentSize_hint: 'A third, independent effect: how a FIXED real-size object would look to a distant observer — the reverse of the stretch above. Radial size shrinks by D(r) toward the horizon; tangential size is unchanged.',
+      apparentInfoToggle_label: 'What does this show?',
+      apparentInfo_text: 'This shows how an object of a fixed real (proper) size would look to a distant observer, rather than how the coordinate grid the points sit on behaves. Its radial extent shrinks by the factor D(r) = √(1−Rs/r) as it nears the horizon — the same factor that governs gravitational redshift and time dilation — while its size across the radius stays exactly the same, since the Schwarzschild angular part of the metric has no such factor. It mixes a real GR quantity with a simplified observer model (no actual ray-tracing through bent light paths), so treat it as a physically grounded approximation rather than a literal rendered photograph. In plain language: a spaceship of the same real size would look shorter — but not narrower — the closer it drifts toward a black hole, as seen from far away, and that\'s the shrinking this shows directly.',
       apparentCoefficient_label: 'Apparent-size coefficient',
       distribution_label: 'Point distribution',
       distribution_random: 'Random',
@@ -189,15 +193,19 @@
       freq_label: 'Базовая частота пульсации (вдали от ЧД)',
       density_label: 'Плотность точек',
       tidalStretch_label: 'Растяжение точек по ОТО (кривизна пространства)',
+      stretchInfoToggle_label: 'Что это показывает?',
+      stretchInfo_text: 'Это точный метрический множитель Шварцшильда 1/√(1−Rs/r) — во сколько раз собственное (реально измеренное) радиальное расстояние у горизонта больше, чем предполагает плоская координатная сетка. Величина точная и настоящая, но растягивание ФОРМЫ точки по ней — визуализационный приём: у самой точки нет собственного размера, который мог бы растянуться, поэтому так делают видимым иначе невидимый факт об искривлении пространства, а не то, что буквально случилось бы с маленьким объектом. Простыми словами: пространство рядом с чёрной дырой само по себе растянуто, поэтому рулетка, протянутая к горизонту, покажет бо́льшую длину, чем расстояние на карте — вытянутые точки как раз и рисуют это растяжение.',
       stretchCoefficient_label: 'Коэффициент растяжения',
       stretchDirection_label: 'Направление растяжения',
       stretchDirection_toward: 'Только к чёрной дыре',
       stretchDirection_both: 'Симметрично (в обе стороны)',
       tidalCompress_label: 'Приливное сжатие (поперёк радиуса)',
-      tidalCompress_hint: 'Другой эффект ОТО, чем растяжение выше: приливный тензор также сжимает перпендикулярно радиусу (вдвое слабее растяжения) — и, в отличие от растяжения, остаётся конечным прямо на горизонте.',
+      compressInfoToggle_label: 'Что это показывает?',
+      compressInfo_text: 'Это визуализация настоящей приливной силы из тензора геодезического отклонения в метрике Шварцшильда: гравитация тянет ближнюю к чёрной дыре сторону протяжённого тела сильнее, чем дальнюю, растягивая его вдоль радиуса и одновременно сжимая с боков. Поскольку тензор в вакууме бесследовый, боковое сжатие всегда ровно вдвое слабее радиального растяжения и, в отличие от чисто геометрического растяжения пространства, остаётся конечным прямо на горизонте — разрушительным оно становится только глубже. Это тот самый, реально существующий эффект, который в народе называют «спагеттификацией»: упади вы к чёрной дыре ногами вперёд, гравитация растянула бы вас от головы до пят, одновременно сжимая с боков — сужение каждой точки поперёк и есть маленькая картинка именно этого сжатия.',
       compressCoefficient_label: 'Коэффициент сжатия',
       apparentSize_label: 'Видимый размер (удалённый наблюдатель)',
-      apparentSize_hint: 'Третий, независимый эффект: как выглядел бы объект ФИКСИРОВАННОГО реального размера глазами удалённого наблюдателя — обратное растяжению выше. Радиальный размер сжимается по D(r) к горизонту; поперечный не меняется.',
+      apparentInfoToggle_label: 'Что это показывает?',
+      apparentInfo_text: 'Показывает, как объект ФИКСИРОВАННОГО реального (собственного) размера выглядел бы для удалённого наблюдателя — а не то, как ведёт себя координатная сетка, на которой стоят точки. Его радиальный размер уменьшается с множителем D(r) = √(1−Rs/r) по мере приближения к горизонту — тем же самым множителем, что задаёт гравитационное красное смещение и замедление времени, — а размер поперёк радиуса не меняется вовсе, поскольку угловая часть метрики Шварцшильда такого множителя не содержит. Здесь точная величина ОТО смешана с упрощённой моделью наблюдателя (без настоящей трассировки искривлённых лучей света), так что это скорее физически обоснованное приближение, чем буквальная отрисованная фотография. Простыми словами: корабль того же реального размера выглядел бы короче — но не уже — по мере приближения к чёрной дыре, если смотреть издалека, и именно это сжатие показано здесь напрямую.',
       apparentCoefficient_label: 'Коэффициент видимого размера',
       distribution_label: 'Распределение точек',
       distribution_random: 'Случайное',
@@ -536,16 +544,22 @@
     fixedSizeRow: document.getElementById('fixedSizeRow'),
     pointShape: document.getElementById('pointShape'),
     tidalStretch: document.getElementById('tidalStretch'),
+    stretchInfoToggle: document.getElementById('stretchInfoToggle'),
+    stretchInfoText: document.getElementById('stretchInfoText'),
     stretchCoefficientRow: document.getElementById('stretchCoefficientRow'),
     stretchCoefficient: document.getElementById('stretchCoefficient'),
     stretchCoefficientReadout: document.getElementById('stretchCoefficientReadout'),
     stretchDirectionRow: document.getElementById('stretchDirectionRow'),
     stretchDirection: document.getElementById('stretchDirection'),
     tidalCompress: document.getElementById('tidalCompress'),
+    compressInfoToggle: document.getElementById('compressInfoToggle'),
+    compressInfoText: document.getElementById('compressInfoText'),
     compressCoefficientRow: document.getElementById('compressCoefficientRow'),
     compressCoefficient: document.getElementById('compressCoefficient'),
     compressCoefficientReadout: document.getElementById('compressCoefficientReadout'),
     apparentSize: document.getElementById('apparentSize'),
+    apparentInfoToggle: document.getElementById('apparentInfoToggle'),
+    apparentInfoText: document.getElementById('apparentInfoText'),
     apparentCoefficientRow: document.getElementById('apparentCoefficientRow'),
     apparentCoefficient: document.getElementById('apparentCoefficient'),
     apparentCoefficientReadout: document.getElementById('apparentCoefficientReadout'),
@@ -1561,6 +1575,19 @@
     scheduleSave();
   }
 
+  // Маленькие раскрывающиеся "что это показывает?" под чекбоксами
+  // растяжения/сжатия/видимого размера — тот же accordion-паттерн, что и у
+  // "об этой симуляции" выше, но локальный к каждому эффекту и без
+  // персистентности (всегда стартуют свёрнутыми, это просто пояснение, а не
+  // настройка).
+  function setupInfoToggle(toggleEl, textEl) {
+    toggleEl.addEventListener('click', () => {
+      const expanded = toggleEl.getAttribute('aria-expanded') === 'true';
+      toggleEl.setAttribute('aria-expanded', String(!expanded));
+      textEl.classList.toggle('collapsed', expanded);
+    });
+  }
+
   function applyInfoPanelState() {
     els.stats.classList.toggle('collapsed', !infoPanelExpanded);
     els.infoPanelToggle.setAttribute('aria-expanded', String(infoPanelExpanded));
@@ -1901,6 +1928,9 @@
   els.signalCount.addEventListener('input', onSignalCountChange);
   els.noGravity.addEventListener('change', onNoGravityChange);
   els.introToggle.addEventListener('click', onIntroToggleClick);
+  setupInfoToggle(els.stretchInfoToggle, els.stretchInfoText);
+  setupInfoToggle(els.compressInfoToggle, els.compressInfoText);
+  setupInfoToggle(els.apparentInfoToggle, els.apparentInfoText);
   els.infoPanelToggle.addEventListener('click', onInfoPanelToggleClick);
 
   canvas.addEventListener('wheel', (e) => {

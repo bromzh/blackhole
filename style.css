@@ -293,8 +293,12 @@ body.hudCollapsed .hudEdgeBtn {
   transform: rotate(-90deg);
 }
 
-.hud .hint#introText.collapsed {
+.hud .hint.collapsed {
   display: none;
+}
+
+.row.checkboxRow .infoToggle {
+  margin-top: 4px;
 }
 
 .floatingPanel {
